@@ -14,6 +14,10 @@ from importlib import resources
 from pathlib import Path
 from typing import Callable, Iterable
 
+import yaml
+
+from emporio.knowledge import KnowledgeError, build_index
+
 PAYMENT_METHOD_RE = re.compile(r"^(pix|debit|boleto|credit_(?:[1-9]|1[0-2])x)$")
 
 
@@ -221,6 +225,10 @@ def _populate(conn: sqlite3.Connection, data_dir: Path, knowledge_dir: Path) -> 
     violations = conn.execute("PRAGMA foreign_key_check").fetchall()
     if violations:
         raise LoadError(f"Foreign key violations found: {violations[:5]}")
+    try:
+        build_index(conn, knowledge_dir)
+    except (KnowledgeError, KeyError, TypeError, yaml.YAMLError) as exc:
+        raise LoadError(f"Invalid policy document: {exc}") from exc
 
 
 def build_database(data_dir: Path, knowledge_dir: Path, db_path: Path) -> dict[str, int]:
