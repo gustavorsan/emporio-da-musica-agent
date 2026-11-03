@@ -9,7 +9,7 @@ description = "Customer service agent prototype for the fictional store Empório
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "openai>=1.60",
+    "openai>=3.44,<4",
     "pydantic>=2.9",
     "python-dotenv>=1.0",
     "pyyaml>=6.0",

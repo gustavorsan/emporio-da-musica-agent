@@ -17,12 +17,14 @@ VAR_DIR = ROOT_DIR / "var"
 DB_PATH = VAR_DIR / "emporio.db"
 LOG_PATH = VAR_DIR / "logs" / "tools.jsonl"
 
-STORE_TIMEZONE = ZoneInfo("America/Sao_Paulo")
+# Campo Grande/MS runs one hour behind Sao Paulo, which matters at the edges of store hours.
+STORE_TIMEZONE = ZoneInfo("America/Campo_Grande")
 
 MAX_TOOL_ROUNDS = 6
 MAX_TOOL_RESULT_CHARS = 8_000
 MAX_HISTORY_TURNS = 12
-MAX_COMPLETION_TOKENS = 1_500
+# Reasoning models count their reasoning against this limit, so it is kept generous.
+MAX_COMPLETION_TOKENS = 4_000
 LLM_TIMEOUT_SECONDS = 60.0
 LLM_MAX_RETRIES = 2
 
