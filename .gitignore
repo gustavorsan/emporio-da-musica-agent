@@ -1,0 +1,18 @@
+# Secrets
+.env
+
+# Generated database and local logs
+var/
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+build/
+dist/
+
+# Local scratch files and the challenge statement
+tmp/
+desafio_tecnico_ai_eng_artefact.pdf

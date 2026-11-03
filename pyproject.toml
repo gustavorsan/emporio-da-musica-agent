@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "emporio-agent"
+version = "0.1.0"
+description = "Customer service agent prototype for the fictional store Empório da Música"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "openai>=1.60",
+    "pydantic>=2.9",
+    "python-dotenv>=1.0",
+    "pyyaml>=6.0",
+    "tzdata>=2024.1",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+emporio = ["schema.sql"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
