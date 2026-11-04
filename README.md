@@ -1,5 +1,7 @@
 # Agente de atendimento — Empório da Música
 
+**Português** | [English](README.en.md)
+
 Protótipo em Python de um agente de atendimento por texto para a loja fictícia Empório da Música, de Campo Grande/MS. O agente responde sobre produtos, preços, disponibilidade, pedidos e políticas da loja, em uma conversa pela linha de comando ou por uma página local no navegador.
 
 **A ideia central:** o modelo interpreta a mensagem e redige a resposta; preços, descontos, parcelas, disponibilidade, prazos de troca e devolução e acesso a pedidos são resolvidos em Python.
@@ -161,6 +163,6 @@ Esses testes cobrem os cenários avaliados e não garantem o comportamento para 
 ## Uso de assistentes de código
 
 - **Codex:** análise do enunciado e dos dados, levantamento de requisitos, parecer sobre o design e plano de execução, registrados em [LEVANTAMENTO_REQUISITOS.md](LEVANTAMENTO_REQUISITOS.md), [PARECER_ADERENCIA_SYSTEM_DESIGN_V2.md](PARECER_ADERENCIA_SYSTEM_DESIGN_V2.md) e [PLANO_EXECUCAO.md](PLANO_EXECUCAO.md).
-- **Claude Code:** revisão do plano contra os dados, o que revelou lacunas como parcelas históricas abaixo do mínimo e o fuso da loja; implementação do código, das políticas, dos testes e dos cenários; redação deste README.
+- **Claude Code:** revisão do plano contra os dados, o que revelou lacunas como parcelas históricas abaixo do mínimo e o fuso da loja; implementação do código, das políticas, dos testes e dos cenários; redação deste README e da versão em inglês.
 
 **Meu papel:** decidi provedor, escopo e publicação, e revisei o resultado. Pedi uma revisão de erros e escolhi o que corrigir; solicitei a interface local, o cálculo de prazos em Python e a identificação na conversa; e corrigi o agente ao notar que ele perguntava em qual loja a compra foi feita, embora só exista uma. Os cálculos críticos foram conferidos contra os CSVs por testes automatizados, e as respostas do modelo, pela leitura das conversas, que encontrou erros que os testes não pegaram.
