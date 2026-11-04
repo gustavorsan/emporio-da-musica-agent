@@ -164,7 +164,7 @@
   turns:
     - user: "Comprei pelo site, recebi em 03/11/2026 e me arrependi. Ainda dá para devolver?"
       tools: [check_return_window]
-      includes_any: ["fora do prazo", "passou", "venceu", "encerrou", "expirou", "terminou", "acabou", "fechou", "nao da mais"]
+      includes_any: ["fora do prazo", "passou", "venceu", "encerr", "expirou", "terminou", "acabou", "fechou", "nao da mais"]
       excludes: ["ainda da tempo", "dentro do prazo", "ainda esta no prazo"]
 
 - id: regret-asks-for-the-channel
@@ -173,8 +173,9 @@
     - user: "Recebi ontem e me arrependi, quero devolver. Ainda dá?"
       tools: [check_return_window]
       includes: ["online"]
-      includes_any: ["onde voce comprou", "onde comprou", "loja fisica", "na loja"]
-      excludes: ["provavelmente"]
+      includes_any: ["presencial", "loja fisica", "na loja"]
+      # The store has a single location, so the question is about the channel, never about which store.
+      excludes: ["provavelmente", "onde comprou", "onde voce comprou", "qual loja", "qual unidade", "qual filial"]
       # Any verdict must be tied to the channel ("se foi online..."), which the customer has not given.
       excludes_regex: ["(?i)^\\W*(sim|(ainda )?(pode|dá),? sim)\\W*$", "(?im)^(?!.*online).*\\bdentro do prazo\\b"]
 

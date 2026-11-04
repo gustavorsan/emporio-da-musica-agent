@@ -301,6 +301,12 @@ def test_agent_uses_the_store_date_not_the_model(conn):
     assert reply.tool_traces[0].sources == ["4.1"]
 
 
+def test_prompt_asks_about_the_channel_because_there_is_one_store():
+    prompt = build_system_prompt(datetime(2026, 11, 10, 10, 0, tzinfo=config.STORE_TIMEZONE), None, {})
+    assert "uma única loja" in prompt
+    assert "pergunte onde comprou" not in prompt
+
+
 def test_prompt_forbids_counting_days_by_hand():
     prompt = build_system_prompt(datetime(2026, 11, 10, 10, 0, tzinfo=config.STORE_TIMEZONE), None, {})
     assert "check_return_window" in prompt
