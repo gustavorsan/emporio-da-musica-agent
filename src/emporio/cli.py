@@ -15,6 +15,7 @@ from emporio.db import DatabaseNotReady, connect_readonly, sources_changed
 from emporio.llm import OpenAIClient
 from emporio.loader import LoadError, build_database
 from emporio.orders import Customer, find_customer
+from emporio.web import HOST, ChatService, make_server
 
 _EXIT_WORDS = {"sair", "exit", "quit"}
 
@@ -57,6 +58,14 @@ def _describe_tool_calls(reply: AgentReply) -> list[str]:
         sources = f", seções {', '.join(trace.sources)}" if trace.sources else ""
         lines.append(f"`{trace.name}({trace.arguments})` → {result}{sources}")
     return lines
+
+
+def _warn_if_sources_changed(conn: sqlite3.Connection) -> None:
+    if sources_changed(conn, config.DATA_DIR, config.KNOWLEDGE_DIR):
+        print(
+            "Aviso: as fontes mudaram desde a última carga. Execute: python -m emporio prepare",
+            file=sys.stderr,
+        )
 
 
 class _Transcript:
@@ -103,11 +112,7 @@ def _chat(args: argparse.Namespace) -> int:
         return 2
 
     try:
-        if sources_changed(conn, config.DATA_DIR, config.KNOWLEDGE_DIR):
-            print(
-                "Aviso: as fontes mudaram desde a última carga. Execute: python -m emporio prepare",
-                file=sys.stderr,
-            )
+        _warn_if_sources_changed(conn)
         customer = None
         if args.customer_id is not None:
             customer = find_customer(conn, args.customer_id)
@@ -145,6 +150,50 @@ def _chat(args: argparse.Namespace) -> int:
     return 0
 
 
+def _web(args: argparse.Namespace) -> int:
+    try:
+        settings = config.load_llm_settings()
+        conn = connect_readonly(config.DB_PATH)
+    except (config.ConfigError, DatabaseNotReady) as exc:
+        print(exc, file=sys.stderr)
+        return 2
+
+    try:
+        _warn_if_sources_changed(conn)
+    except sqlite3.Error as exc:
+        print(f"Falha ao acessar o banco: {exc}", file=sys.stderr)
+        return 1
+    finally:
+        conn.close()
+
+    service = ChatService(OpenAIClient(settings), config.DB_PATH, config.LOG_PATH)
+    try:
+        server = make_server(service, args.port)
+    except OSError:
+        print(
+            f"Não foi possível usar a porta {args.port}. Feche o programa que a ocupa ou use --port.",
+            file=sys.stderr,
+        )
+        return 1
+
+    print(f"Empório da Música em http://{HOST}:{server.server_address[1]} — Ctrl+C encerra.", flush=True)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.server_close()
+        service.close()
+    return 0
+
+
+def _port(text: str) -> int:
+    port = int(text)
+    if not 1 <= port <= 65535:
+        raise argparse.ArgumentTypeError("use uma porta entre 1 e 65535")
+    return port
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="emporio", description="Agente Empório da Música")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -162,6 +211,10 @@ def build_parser() -> argparse.ArgumentParser:
     chat.add_argument("--transcript", type=Path, help="grava a conversa em Markdown")
     chat.add_argument("--show-tools", action="store_true", help="mostra as ferramentas usadas")
     chat.set_defaults(handler=_chat)
+
+    web = commands.add_parser("web", help="abre a interface local no navegador, em 127.0.0.1")
+    web.add_argument("--port", type=_port, default=config.WEB_DEFAULT_PORT, help="porta local (padrão: 8000)")
+    web.set_defaults(handler=_web)
     return parser
 
 

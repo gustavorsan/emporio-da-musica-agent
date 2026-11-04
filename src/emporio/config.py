@@ -28,6 +28,12 @@ MAX_COMPLETION_TOKENS = 4_000
 LLM_TIMEOUT_SECONDS = 60.0
 LLM_MAX_RETRIES = 2
 
+WEB_DEFAULT_PORT = 8000
+WEB_MAX_SESSIONS = 20
+WEB_MAX_MESSAGE_CHARS = 2_000
+# Room for a full message even when every character arrives as a JSON escape sequence.
+WEB_MAX_BODY_BYTES = 16_384
+
 
 class ConfigError(RuntimeError):
     """Raised when required settings are missing."""

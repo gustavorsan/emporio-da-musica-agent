@@ -1,6 +1,6 @@
 # Agente de atendimento — Empório da Música
 
-Protótipo em Python de um agente de atendimento por texto para a loja fictícia Empório da Música, de Campo Grande/MS. O agente responde sobre produtos, preços, disponibilidade, pedidos e políticas da loja, em uma conversa pela linha de comando.
+Protótipo em Python de um agente de atendimento por texto para a loja fictícia Empório da Música, de Campo Grande/MS. O agente responde sobre produtos, preços, disponibilidade, pedidos e políticas da loja, em uma conversa pela linha de comando ou por uma página local no navegador.
 
 **A ideia central:** o modelo interpreta a mensagem e redige a resposta; preços, descontos, parcelas, disponibilidade e acesso a pedidos são resolvidos em Python.
 
@@ -16,13 +16,15 @@ python -m venv .venv
 pip install -e ".[dev]"
 Copy-Item .env.example .env      # preencha OPENAI_API_KEY e OPENAI_MODEL
 python -m emporio prepare        # gera o banco e o índice em var/
-python -m emporio chat           # inicia a conversa; "sair" encerra
+python -m emporio web            # abre em http://127.0.0.1:8000; Ctrl+C encerra
+python -m emporio chat           # ou conversa no terminal; "sair" encerra
 ```
 
 Em Linux ou macOS, ative o ambiente com `source .venv/bin/activate` e copie o arquivo com `cp`.
 
 | Comando | O que faz |
 | --- | --- |
+| `python -m emporio web --port 8080` | Usa outra porta para a página local. O cliente de demonstração é escolhido na própria página. |
 | `python -m emporio chat --customer-id 6` | Inicia a sessão como um cliente de demonstração, o que libera a consulta aos pedidos dele. |
 | `python -m emporio chat --show-tools` | Mostra as ferramentas usadas em cada resposta. |
 | `python -m emporio chat --script arq.txt --transcript saida.md` | Envia as mensagens de um arquivo ao modelo real e grava a conversa. Se o modelo falhar, encerra com erro e não grava a transcrição. |
@@ -53,6 +55,8 @@ Mensagem ──► agent.py ◄──► OpenAI (chamada de ferramentas)        
 | `tools.py` | Contratos das cinco ferramentas e tratamento de erros. |
 | `llm.py` | Único ponto de contato com o SDK da OpenAI. |
 | `agent.py`, `prompts.py` | Ciclo de ferramentas, sessão e persona. |
+| `cli.py` | Comandos `prepare`, `chat` e `web`. |
+| `web.py`, `static/` | Servidor local e página de conversa, sobre o mesmo agente da CLI. |
 
 ## Decisões técnicas
 
@@ -80,7 +84,9 @@ Mensagem ──► agent.py ◄──► OpenAI (chamada de ferramentas)        
 
 **Prompt.** O prompt de sistema define a persona do §7.1 do manual, quando consultar cada fonte, as regras que o modelo não pode contornar e o que ele não pode alegar ter feito. Data, hora e situação da loja são calculadas em Python e injetadas a cada chamada.
 
-**CLI e histórico em memória.** O enunciado foca no agente, e uma CLI basta para demonstrá-lo. O histórico é mantido durante a sessão, com os produtos discutidos no prompt para resolver “e no PIX?”. Ele é cortado por turno inteiro, sem separar chamadas de ferramenta de seus resultados. Persistir conversas não traria ganho nos cenários avaliados e criaria um novo cuidado com dados pessoais.
+**Página local sem framework.** A página facilita testar o agente à mão, sem mudar suas regras: usa o mesmo `Agent` da CLI, e o cliente da sessão continua definido pela aplicação, fora do alcance do modelo. O servidor usa só a biblioteca padrão, pois um protótipo de uma página não justifica uma dependência nova. Por expor uma chave de API paga na máquina, ele escuta apenas em `127.0.0.1`, recusa outros `Host` e `Origin`, para que um site aberto no navegador não consiga usar a chave, e nunca interpreta a resposta do modelo como HTML.
+
+**CLI e histórico em memória.** O enunciado foca no agente, e a CLI basta para demonstrá-lo e capturar as conversas de exemplo. O histórico é mantido durante a sessão, com os produtos discutidos no prompt para resolver “e no PIX?”. Ele é cortado por turno inteiro, sem separar chamadas de ferramenta de seus resultados. Persistir conversas não traria ganho nos cenários avaliados e criaria um novo cuidado com dados pessoais.
 
 ## Suposições
 
@@ -100,7 +106,7 @@ O enunciado pede que ambiguidades sejam resolvidas e documentadas.
 | E-mail | Adota o endereço da capa, sem acento no domínio. |
 | Frete de exatamente R$ 500,00 | O manual não define. O agente orienta a confirmação, sem escolher uma regra. |
 | Fuso horário | `America/Campo_Grande`, o fuso da loja. Feriados não constam dos dados e são tratados como informação indisponível. |
-| Sessão | O cliente é definido por `--customer-id`, fora do alcance do modelo. É uma demonstração de titularidade, não autenticação. |
+| Sessão | O cliente é definido por `--customer-id` ou pelo seletor da página, fora do alcance do modelo. É uma demonstração de titularidade, não autenticação. |
 
 Inconsistências encontradas nos dados, preservadas e não corrigidas:
 
@@ -112,7 +118,7 @@ Inconsistências encontradas nos dados, preservadas e não corrigidas:
 
 ## Verificação
 
-- **Testes determinísticos (`pytest`):** carga, preços, parcelas, disponibilidade, titularidade, recuperação das políticas e mecânica do ciclo do agente. Os testes do ciclo usam um cliente simulado e não avaliam respostas do modelo.
+- **Testes determinísticos (`pytest`):** carga, preços, parcelas, disponibilidade, titularidade, recuperação das políticas, mecânica do ciclo do agente e API da página local. Os testes do ciclo usam um cliente simulado e não avaliam respostas do modelo.
 - **Cenários de aceite (`evals/`):** 29 cenários com o modelo real, verificando fatos e ferramentas chamadas, sem exigir texto idêntico. Tom e persona são revistos na leitura das conversas.
 - **Conversas de exemplo (`conversations/`):** transcrições de execuções reais da CLI, com modelo e ferramentas usadas.
 
@@ -127,7 +133,8 @@ Esses testes cobrem os cenários avaliados e não garantem o comportamento para 
 - A busca por atributos é textual sobre nome, descrição e especificações; não há filtros estruturados por atributo.
 - Não há cotação de frete, pois ela depende de CEP, peso e dimensões, que não foram fornecidos.
 - Não há calendário de feriados nem de horários especiais.
-- O histórico se perde ao encerrar a sessão.
+- O histórico se perde ao encerrar a sessão, ao recarregar a página ou ao iniciar uma nova conversa.
+- A página é só para uso local: não tem login nem HTTPS, e não deve ser exposta na rede. Ela não grava transcrições, papel que fica com a CLI.
 
 ## O que eu faria com mais tempo
 

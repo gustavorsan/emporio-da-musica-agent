@@ -12,13 +12,15 @@ class DatabaseNotReady(RuntimeError):
     """Raised when the generated database has not been prepared yet."""
 
 
-def connect_readonly(db_path: Path) -> sqlite3.Connection:
+def connect_readonly(db_path: Path, *, check_same_thread: bool = True) -> sqlite3.Connection:
     """Open the database in read-only mode; as_uri() encodes spaces and accents in the path."""
     if not db_path.exists():
         raise DatabaseNotReady(
             f"Banco não encontrado em {db_path}. Execute: python -m emporio prepare"
         )
-    conn = sqlite3.connect(f"{db_path.resolve().as_uri()}?mode=ro", uri=True)
+    conn = sqlite3.connect(
+        f"{db_path.resolve().as_uri()}?mode=ro", uri=True, check_same_thread=check_same_thread
+    )
     conn.row_factory = sqlite3.Row
     return conn
 

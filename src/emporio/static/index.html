@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Empório da Música</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <h1>Empório da Música</h1>
+        <p id="status">Assistente virtual · protótipo</p>
+      </div>
+      <div class="controls">
+        <label class="field">
+          <span>Cliente de demonstração</span>
+          <select id="customer">
+            <option value="">Sem identificação</option>
+            <option value="6">Cliente 6 · pedido 9</option>
+            <option value="2">Cliente 2 · pedido 8</option>
+            <option value="12">Cliente 12 · pedido 3</option>
+            <option value="7">Cliente 7 · pedidos 2 e 20</option>
+          </select>
+        </label>
+        <label class="toggle">
+          <input type="checkbox" id="show-tools">
+          <span>Mostrar ferramentas</span>
+        </label>
+        <button type="button" id="new-chat" class="secondary">Nova conversa</button>
+      </div>
+    </header>
+
+    <main id="log" class="log" role="log" aria-live="polite" aria-label="Conversa"></main>
+
+    <form id="composer" class="composer">
+      <label for="message" class="visually-hidden">Sua mensagem</label>
+      <textarea id="message" rows="1" maxlength="2000" placeholder="Escreva sua mensagem" autocomplete="off"></textarea>
+      <button type="submit" id="send">Enviar</button>
+    </form>
+    <p class="footnote">O cliente de demonstração ilustra a consulta de pedidos e não é uma autenticação. A conversa se perde ao fechar a sessão.</p>
+  </div>
+
+  <template id="welcome-template">
+    <section class="welcome">
+      <h2>Olá! Como posso ajudar?</h2>
+      <p>Pergunte sobre instrumentos, preços, pedidos e políticas da loja.</p>
+      <div class="suggestions">
+        <button type="button" class="suggestion">Quanto custa o Kalani KAL-700T no PIX?</button>
+        <button type="button" class="suggestion">Tem violão até R$ 1.000?</button>
+        <button type="button" class="suggestion">Me arrependi da compra, e agora?</button>
+        <button type="button" class="suggestion">Cadê meu pedido?</button>
+      </div>
+    </section>
+  </template>
+</body>
+</html>
