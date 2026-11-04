@@ -256,5 +256,11 @@ def build_database(data_dir: Path, knowledge_dir: Path, db_path: Path) -> dict[s
         temp_path.unlink(missing_ok=True)
         raise
     conn.close()
-    os.replace(temp_path, db_path)
+    try:
+        os.replace(temp_path, db_path)
+    except OSError as exc:
+        temp_path.unlink(missing_ok=True)
+        raise LoadError(
+            f"Não foi possível substituir {db_path}. Feche as sessões de chat abertas e execute de novo."
+        ) from exc
     return counts

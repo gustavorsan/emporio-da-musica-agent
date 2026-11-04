@@ -20,22 +20,34 @@ AVAILABILITY_LABELS = {
     "discontinued": "descontinuado, não faz mais parte do catálogo",
 }
 
-# Search terms per normalized category name; singular forms and instruments the names omit.
+# Instrument words per normalized category name, including singular forms the names omit.
 _CATEGORY_TERMS = {
     "guitarras": {"guitarra", "guitarras"},
     "baixos": {"baixo", "baixos", "contrabaixo", "contrabaixos"},
     "baterias e percussao": {"bateria", "baterias", "percussao"},
-    "teclados e pianos": {"teclado", "teclados", "piano", "pianos", "sintetizador"},
+    "teclados e pianos": {"teclado", "teclados", "piano", "pianos", "sintetizador", "sintetizadores"},
     "violoes": {"violao", "violoes"},
-    "instrumentos de sopro (madeiras)": {"sopro", "sopros", "madeiras", "flauta", "clarinete", "saxofone"},
-    "instrumentos de sopro (metais)": {"sopro", "sopros", "metais", "trompete", "trombone"},
-    "cordas orquestrais": {"violino", "violinos", "viola", "violoncelo", "orquestrais"},
+    "instrumentos de sopro (madeiras)": {
+        "sopro", "sopros", "flauta", "flautas", "clarinete", "clarinetes", "saxofone", "saxofones",
+    },
+    "instrumentos de sopro (metais)": {
+        "sopro", "sopros", "trompete", "trompetes", "trombone", "trombones",
+    },
+    "cordas orquestrais": {
+        "violino", "violinos", "viola", "violas", "violoncelo", "violoncelos", "orquestrais",
+    },
     "ukuleles": {"ukulele", "ukuleles"},
 }
+_CATEGORY_WORDS = frozenset().union(*_CATEGORY_TERMS.values())
 
+# Grammar and preference words: "violão barato" must not require the word "barato" in a product.
+# Cheapness is expressed through sort and max_price instead.
 _QUERY_STOPWORDS = frozenset(
     "a o as os um uma uns umas de da do das dos para pra com sem e em no na nos nas "
-    "por que tem ter quero preciso algum alguma".split()
+    "por que tem ter quero preciso algum alguma ate reais preco valor "
+    "barato barata baratos baratas mais menos bom boa bons boas melhor melhores legal "
+    "otimo otima qualidade custo beneficio opcao opcoes outro outra outros outras "
+    "modelo modelos instrumento instrumentos".split()
 )
 
 
@@ -134,6 +146,14 @@ def _token_matches(token: str, words: set[str], compact_name: str) -> bool:
     return token in compact_name or any(word.startswith(token) for word in words)
 
 
+def _row_matches(row: sqlite3.Row, token: str) -> bool:
+    # An instrument word selects its category: a ukulele whose description mentions a violão
+    # is not a violão, and "viola" must not match "violao" by prefix.
+    if token in _CATEGORY_WORDS:
+        return token in _category_terms(row["category_name"])
+    return _token_matches(token, _searchable_words(row), _name_compact(row))
+
+
 def _relevance(row: sqlite3.Row, tokens: list[str]) -> int:
     name_words = set(tokenize(row["name"]))
     compact = _name_compact(row)
@@ -187,11 +207,7 @@ def search_products(
     match_quality = "exact"
     if tokens:
         exact = [
-            (row, price)
-            for row, price in priced
-            if all(
-                _token_matches(token, _searchable_words(row), _name_compact(row)) for token in tokens
-            )
+            (row, price) for row, price in priced if all(_row_matches(row, token) for token in tokens)
         ]
         if exact:
             priced = exact
@@ -199,12 +215,7 @@ def search_products(
             # Near matches help when a model is not found, but must not be presented as it.
             match_quality = "partial"
             priced = [
-                (row, price)
-                for row, price in priced
-                if any(
-                    _token_matches(token, _searchable_words(row), _name_compact(row))
-                    for token in tokens
-                )
+                (row, price) for row, price in priced if any(_row_matches(row, token) for token in tokens)
             ]
 
     on_sale = [
@@ -252,7 +263,11 @@ def _filter_by_category(rows: list[sqlite3.Row], category: str) -> list[sqlite3.
 
 
 def _get_row(conn: sqlite3.Connection, product_id: int) -> sqlite3.Row | None:
-    rows = _products(conn, product_id)
+    try:
+        rows = _products(conn, product_id)
+    except OverflowError:
+        # SQLite integers stop at 64 bits, so a longer number cannot be an existing product.
+        return None
     return rows[0] if rows else None
 
 

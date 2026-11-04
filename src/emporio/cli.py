@@ -60,33 +60,38 @@ def _describe_tool_calls(reply: AgentReply) -> list[str]:
 
 
 class _Transcript:
-    """Records a real run: the user messages, the tool calls and the model's replies."""
+    """Records a real run; written only at the end, so a failure never replaces earlier evidence."""
 
     def __init__(self, path: Path | None, model: str, customer: Customer | None) -> None:
         self._path = path
-        if path is None:
-            return
-        path.parent.mkdir(parents=True, exist_ok=True)
         session = f"cliente de demonstração nº {customer.customer_id}" if customer else "sem cliente identificado"
         started = datetime.now(config.STORE_TIMEZONE).strftime("%d/%m/%Y %H:%M")
-        path.write_text(
-            f"# Conversa — {path.stem}\n\n"
-            f"Execução real da CLI. Modelo: `{model}`. Sessão: {session}. Início: {started} (horário de Campo Grande/MS).\n",
-            "utf-8",
-        )
+        title = path.stem if path else ""
+        self._parts = [
+            f"# Conversa — {title}\n\n"
+            f"Execução real da CLI. Modelo: `{model}`. Sessão: {session}. Início: {started} (horário de Campo Grande/MS).\n"
+        ]
 
     def add(self, user_text: str, reply: AgentReply) -> None:
-        if self._path is None:
-            return
-        parts = [f"\n**Cliente:** {user_text}\n"]
+        self._parts.append(f"\n**Cliente:** {user_text}\n")
         calls = _describe_tool_calls(reply)
         if calls:
-            parts.append("\n<details><summary>Ferramentas consultadas</summary>\n\n")
-            parts.extend(f"- {call}\n" for call in calls)
-            parts.append("\n</details>\n")
-        parts.append(f"\n**Agente:** {reply.text}\n")
-        with self._path.open("a", encoding="utf-8") as handle:
-            handle.write("".join(parts))
+            self._parts.append("\n<details><summary>Ferramentas consultadas</summary>\n\n")
+            self._parts.extend(f"- {call}\n" for call in calls)
+            self._parts.append("\n</details>\n")
+        self._parts.append(f"\n**Agente:** {reply.text}\n")
+
+    def discard(self) -> None:
+        """Give up on this run: a fallback message must not be presented as a real conversation."""
+        if self._path is not None:
+            print("A transcrição desta sessão não será gravada.", file=sys.stderr)
+        self._path = None
+
+    def save(self) -> None:
+        if self._path is None:
+            return
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        self._path.write_text("".join(self._parts), "utf-8")
 
 
 def _chat(args: argparse.Namespace) -> int:
@@ -121,7 +126,17 @@ def _chat(args: argparse.Namespace) -> int:
             if args.show_tools:
                 for line in _describe_tool_calls(reply):
                     print(f"  [ferramenta] {line}", file=sys.stderr)
+            if reply.failure:
+                print(
+                    f"Aviso: a resposta acima é uma mensagem de contingência, não do modelo ({reply.failure}). "
+                    "Se persistir, confira OPENAI_API_KEY e OPENAI_MODEL no .env.",
+                    file=sys.stderr,
+                )
+                transcript.discard()
+                if args.script:
+                    return 1
             transcript.add(text, reply)
+        transcript.save()
     except sqlite3.Error as exc:
         print(f"Falha ao acessar o banco: {exc}", file=sys.stderr)
         return 1

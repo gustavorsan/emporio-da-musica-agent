@@ -55,6 +55,42 @@ def test_tool_result_reaches_the_model_and_final_text_is_returned(conn):
     assert json.loads(tool_message["content"])["price"] == "R$ 323,10"
 
 
+def test_model_replies_are_not_marked_as_failures(conn):
+    assert _agent(conn, ScriptedLLM(LLMReply("Oi!"))).respond("Oi").failure is None
+
+
+@pytest.mark.parametrize(
+    "replies, text, failure",
+    [
+        ((LLMError("AuthenticationError"),), PROVIDER_FAILURE_REPLY, "provider:AuthenticationError"),
+        ((LLMReply(""),), INCOMPLETE_REPLY, "empty_reply"),
+    ],
+)
+def test_fallback_replies_tell_the_operator_why(conn, replies, text, failure):
+    reply = _agent(conn, ScriptedLLM(*replies)).respond("Oi")
+    assert (reply.text, reply.failure) == (text, failure)
+
+
+def test_tool_round_limit_is_reported_as_a_failure(conn):
+    loop = [_call("search_knowledge", question="frete")] * config.MAX_TOOL_ROUNDS
+    assert _agent(conn, ScriptedLLM(*loop)).respond("Oi").failure == "tool_round_limit"
+
+
+def test_huge_order_number_keeps_the_session_alive(conn):
+    llm = ScriptedLLM(_call("get_order_status", order_id=10**20), LLMReply("Não achei esse pedido."))
+    agent = _agent(conn, llm, Customer(6, "Juliana"))
+    assert agent.respond("Cadê o pedido 100000000000000000000?").text == "Não achei esse pedido."
+    tool_message = llm.calls[1][-1]
+    assert json.loads(tool_message["content"])["error"] == "not_found_or_not_authorized"
+
+
+def test_prompt_requires_the_return_time_when_closed():
+    closed = datetime(2026, 11, 7, 15, 0, tzinfo=config.STORE_TIMEZONE)
+    prompt = build_system_prompt(closed, None, {})
+    assert "# Fora do expediente" in prompt
+    assert "abre segunda-feira às 09:00" in prompt
+
+
 def test_parallel_tool_calls_each_get_a_result(conn):
     both = LLMReply(
         None,

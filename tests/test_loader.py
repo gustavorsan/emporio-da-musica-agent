@@ -36,6 +36,22 @@ def test_rebuild_does_not_duplicate(tmp_path):
     assert build_database(config.DATA_DIR, config.KNOWLEDGE_DIR, path) == EXPECTED_COUNTS
 
 
+def test_locked_database_reports_a_clear_error_and_leaves_no_temp_file(tmp_path, monkeypatch):
+    # Windows refuses to replace a file while a chat session holds it open.
+    path = tmp_path / "locked.db"
+    build_database(config.DATA_DIR, config.KNOWLEDGE_DIR, path)
+    published = path.read_bytes()
+
+    def refuse(source, target):
+        raise PermissionError("in use")
+
+    monkeypatch.setattr("emporio.loader.os.replace", refuse)
+    with pytest.raises(LoadError, match="sessões de chat"):
+        build_database(config.DATA_DIR, config.KNOWLEDGE_DIR, path)
+    assert path.read_bytes() == published
+    assert [item.name for item in tmp_path.iterdir()] == ["locked.db"]
+
+
 def test_no_orphan_references(conn):
     assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
 

@@ -25,7 +25,7 @@ Em Linux ou macOS, ative o ambiente com `source .venv/bin/activate` e copie o ar
 | --- | --- |
 | `python -m emporio chat --customer-id 6` | Inicia a sessão como um cliente de demonstração, o que libera a consulta aos pedidos dele. |
 | `python -m emporio chat --show-tools` | Mostra as ferramentas usadas em cada resposta. |
-| `python -m emporio chat --script arq.txt --transcript saida.md` | Envia as mensagens de um arquivo ao modelo real e grava a conversa. |
+| `python -m emporio chat --script arq.txt --transcript saida.md` | Envia as mensagens de um arquivo ao modelo real e grava a conversa. Se o modelo falhar, encerra com erro e não grava a transcrição. |
 | `pytest` | Roda os testes determinísticos, sem rede e sem chave. |
 | `python evals/run.py` | Roda os cenários de aceite com o modelo real (consome créditos da API). |
 | `python conversations/capture.py` | Regenera as conversas de exemplo (consome créditos da API). |
@@ -93,6 +93,7 @@ O enunciado pede que ambiguidades sejam resolvidas e documentadas.
 | Várias promoções ativas no mesmo produto | Não ocorre nos dados atuais. Se ocorrer, nenhum preço promocional é escolhido, e o agente orienta a confirmação. |
 | Promoção e formas de pagamento | A promoção vale para qualquer forma de pagamento, e o parcelamento incide sobre o preço promocional. |
 | Busca por orçamento | Filtra pelo preço efetivo: promoção ativa e, somente se o cliente pedir, PIX. A Ohana CK-20 de R$ 549,00 entra em “até R$ 500” por R$ 439,20. |
+| Tipo de instrumento na busca | “Violão” ou “viola” selecionam a categoria, não uma menção na descrição: um ukulele que cita violão não entra em “violões”. |
 | Parcela mínima | O §3.1 prevalece sobre o R$ 100,00 geral do §3. “Exceto abaixo de R$ 50,00” foi lido como mínimo de R$ 50,00 em até 3x. |
 | Arredondamento | Meio centavo arredonda para cima. Centavos restantes vão para as primeiras parcelas, e a menor parcela é a comparada ao mínimo. |
 | WhatsApp | Divergente no manual: prioriza o (67) 3321-4500 da seção específica do canal. O (67) 3341-4444 fica como telefone geral. |
@@ -112,7 +113,7 @@ Inconsistências encontradas nos dados, preservadas e não corrigidas:
 ## Verificação
 
 - **Testes determinísticos (`pytest`):** carga, preços, parcelas, disponibilidade, titularidade, recuperação das políticas e mecânica do ciclo do agente. Os testes do ciclo usam um cliente simulado e não avaliam respostas do modelo.
-- **Cenários de aceite (`evals/`):** 27 cenários com o modelo real, verificando fatos e ferramentas chamadas, sem exigir texto idêntico. Tom e persona são revistos na leitura das conversas.
+- **Cenários de aceite (`evals/`):** 29 cenários com o modelo real, verificando fatos e ferramentas chamadas, sem exigir texto idêntico. Tom e persona são revistos na leitura das conversas.
 - **Conversas de exemplo (`conversations/`):** transcrições de execuções reais da CLI, com modelo e ferramentas usadas.
 
 Esses testes cobrem os cenários avaliados e não garantem o comportamento para toda entrada possível. Prompt e testes não eliminam alucinação ou prompt injection; por isso, cálculo, autorização e bloqueio de escrita ficam no código.

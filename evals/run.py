@@ -31,6 +31,8 @@ def check_turn(turn: dict, reply: AgentReply) -> list[str]:
     text = normalize(reply.text)
     called = {trace.name for trace in reply.tool_traces}
     failures = [f"tool not called: {tool}" for tool in turn.get("tools", []) if tool not in called]
+    if reply.failure:
+        failures.append(f"agent failure: {reply.failure}")
     failures += [
         f"missing: {item}" for item in turn.get("includes", []) if normalize(item) not in text
     ]
@@ -69,7 +71,12 @@ def main() -> int:
     for scenario in scenarios:
         customer_id = scenario.get("customer_id")
         customer = find_customer(conn, customer_id) if customer_id else None
-        agent = Agent(llm, conn, customer, log_path=config.LOG_PATH)
+        agent_options = {}
+        if "now" in scenario:
+            # Pins the clock for scenarios that depend on store hours.
+            moment = datetime.fromisoformat(scenario["now"]).replace(tzinfo=config.STORE_TIMEZONE)
+            agent_options["now"] = lambda moment=moment: moment
+        agent = Agent(llm, conn, customer, log_path=config.LOG_PATH, **agent_options)
         failures: list[str] = []
         report.append(f"\n## {scenario['id']}\n")
         for turn in scenario["turns"]:

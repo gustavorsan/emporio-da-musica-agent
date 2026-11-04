@@ -100,6 +100,41 @@ def test_invalid_arguments_return_a_readable_error(context, name, arguments):
     json.dumps(outcome.payload)
 
 
+def test_order_number_beyond_sqlite_range_gets_the_usual_denial(context):
+    huge = _run(context, "get_order_status", order_id=99999999999999999999)
+    missing = _run(context, "get_order_status", order_id=99999)
+    assert huge.payload == missing.payload
+    assert huge.error == "not_found_or_not_authorized"
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        '{"max_price": 1e30}',
+        '{"max_price": 1e308}',
+        '{"max_price": Infinity}',
+        '{"max_price": NaN}',
+        '{"min_price": -Infinity}',
+    ],
+)
+def test_absurd_prices_are_rejected_without_raising(context, raw):
+    outcome = tools.execute("search_products", raw, context)
+    assert outcome.error == "invalid_arguments"
+    json.dumps(outcome.payload)
+
+
+def test_unexpected_tool_failure_does_not_escape(context, monkeypatch):
+    def explode(*args):
+        raise RuntimeError("secret detail")
+
+    monkeypatch.setattr(tools.catalog, "get_product_details", explode)
+    outcome = _run(context, "get_product_details", product_id=95)
+    assert outcome.ok is False
+    assert outcome.error == "unexpected:RuntimeError"
+    assert outcome.payload["error"] == "lookup_failed"
+    assert "secret" not in json.dumps(outcome.payload)
+
+
 def test_malformed_json_is_handled(context):
     outcome = tools.execute("search_products", "{not json", context)
     assert outcome.error == "invalid_arguments"

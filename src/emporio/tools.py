@@ -8,6 +8,7 @@ not a field of any model, so the model has no way to choose whose orders it read
 from __future__ import annotations
 
 import json
+import math
 import sqlite3
 from dataclasses import dataclass, field
 from datetime import date
@@ -19,6 +20,14 @@ from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
 from emporio import catalog, knowledge, orders
 from emporio.catalog import ToolInputError
 
+# Far above any catalog price; larger values only reach the Decimal conversion as errors.
+MAX_PRICE_BRL = 1_000_000_000
+
+_LOOKUP_FAILED = {
+    "error": "lookup_failed",
+    "guidance": "A consulta falhou. Informe a limitação ao cliente e não apresente dados de memória.",
+}
+
 
 class _ToolArgs(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -29,6 +38,8 @@ class SearchProducts(_ToolArgs):
 
     Use para descobrir produtos e seus IDs. O preço efetivo considera promoção ativa e,
     com payment=pix, o desconto de PIX. Exige ao menos texto, categoria ou faixa de preço.
+    Em query, use só tipo, marca, modelo ou característica do instrumento. Para "o mais
+    barato" ou "mais barato que", use sort=price_asc e max_price, sem colocar isso em query.
     """
 
     query: str | None = None
@@ -42,9 +53,9 @@ class SearchProducts(_ToolArgs):
 
     @field_validator("min_price", "max_price")
     @classmethod
-    def _price_not_negative(cls, value: float | None) -> float | None:
-        if value is not None and value < 0:
-            raise ValueError("deve ser maior ou igual a zero")
+    def _price_in_range(cls, value: float | None) -> float | None:
+        if value is not None and not (math.isfinite(value) and 0 <= value <= MAX_PRICE_BRL):
+            raise ValueError(f"deve estar entre 0 e {MAX_PRICE_BRL}")
         return value
 
     @field_validator("limit")
@@ -174,11 +185,10 @@ def execute(name: str, raw_arguments: str, ctx: ToolContext) -> ToolOutcome:
         return ToolOutcome({"error": "invalid_request", "message": str(exc)}, ok=False, error="invalid_request")
     except sqlite3.Error:
         # The exception text stays out of the conversation; the log records the failure.
-        payload = {
-            "error": "lookup_failed",
-            "guidance": "A consulta falhou. Informe a limitação ao cliente e não apresente dados de memória.",
-        }
-        return ToolOutcome(payload, ok=False, error="lookup_failed")
+        return ToolOutcome(dict(_LOOKUP_FAILED), ok=False, error="lookup_failed")
+    except Exception as exc:  # noqa: BLE001
+        # A faulty tool must never end the customer's session; the type goes to the log only.
+        return ToolOutcome(dict(_LOOKUP_FAILED), ok=False, error=f"unexpected:{type(exc).__name__}")
     sources = [item["section"] for item in payload.get("results", [])]
     error = payload.get("error")
     return ToolOutcome(

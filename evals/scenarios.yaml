@@ -2,6 +2,7 @@
 # Checks look at facts and tool calls, never at exact wording; text is compared after
 # removing accents and case. Persona and tone are reviewed by reading the report.
 #
+# Per scenario: id, turns (required), customer_id, now (ISO local time at the store).
 # Per turn: user (required), tools (all must be called), includes (all must appear),
 # includes_any (one must appear), excludes (none may appear), excludes_regex.
 
@@ -10,6 +11,23 @@
     - user: "Quais opções de violões disponíveis custando até R$1000?"
       tools: [search_products]
       includes_any: ["R$ 429,90", "429,90", "R$ 599,90", "599,90"]
+      excludes: ["Kala KA-B", "ukulele"]
+
+- id: cheaper-than-discussed-product
+  turns:
+    - user: "Me conta sobre o Yamaha C40."
+      tools: [search_products]
+      includes: ["599,90"]
+    - user: "Tem algum violão mais barato que ele?"
+      tools: [search_products]
+      includes_any: ["429,90", "459,90", "549,00", "579,90"]
+      excludes: ["nao encontrei", "nao temos", "ukulele"]
+
+- id: closed-store-gives-return-time
+  now: "2026-11-07T15:00:00"
+  turns:
+    - user: "Oi! Quero falar com um atendente."
+      includes_any: ["segunda"]
 
 - id: takamine-price-and-pix
   turns:

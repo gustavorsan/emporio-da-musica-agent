@@ -38,6 +38,8 @@ class ToolTrace:
 class AgentReply:
     text: str
     tool_traces: list[ToolTrace] = field(default_factory=list)
+    # Set when text is a fixed fallback instead of a model reply; for the operator, not the customer.
+    failure: str | None = None
 
 
 def _now() -> datetime:
@@ -151,14 +153,16 @@ class Agent:
                     if reply.content and reply.content.strip():
                         self._turns.append(turn)
                         return AgentReply(reply.content.strip(), traces)
-                    return self._fail(user_message, INCOMPLETE_REPLY, traces)
+                    return self._fail(user_message, INCOMPLETE_REPLY, traces, "empty_reply")
                 for call in reply.tool_calls:
                     self._run_tool(call, turn, traces)
-        except LLMError:
-            return self._fail(user_message, PROVIDER_FAILURE_REPLY, traces)
-        return self._fail(user_message, INCOMPLETE_REPLY, traces)
+        except LLMError as exc:
+            return self._fail(user_message, PROVIDER_FAILURE_REPLY, traces, f"provider:{exc}")
+        return self._fail(user_message, INCOMPLETE_REPLY, traces, "tool_round_limit")
 
-    def _fail(self, user_message: dict, text: str, traces: list[ToolTrace]) -> AgentReply:
+    def _fail(
+        self, user_message: dict, text: str, traces: list[ToolTrace], failure: str
+    ) -> AgentReply:
         """End the turn with a fixed message, dropping partial tool exchanges from history."""
         self._turns.append([user_message, {"role": "assistant", "content": text}])
-        return AgentReply(text, traces)
+        return AgentReply(text, traces, failure)

@@ -50,10 +50,48 @@ def test_pix_widens_budget_search_only_when_requested(conn):
     )
 
 
-def test_acoustic_guitars_up_to_1000(conn):
-    result = catalog.search_products(conn, query="violões", max_price=1000, limit=10)
+@pytest.mark.parametrize("query", ["violões", "violão", "violao"])
+def test_acoustic_guitars_up_to_1000(conn, query):
+    result = catalog.search_products(conn, query=query, max_price=1000, limit=10)
     assert result["total_matches"] == 12
     assert result["returned"] == 10
+    assert {item["category"] for item in result["products"]} == {"Violões"}
+
+
+def test_ukulele_mentioning_a_violao_is_not_a_violao(conn):
+    everything = catalog.search_products(conn, query="violão", only_available=False, limit=10)
+    assert everything["total_matches"] == 35
+    assert "Kala KA-B Barítono Mogno" not in [item["name"] for item in everything["products"]]
+
+
+@pytest.mark.parametrize("query", ["viola", "violas", "violino"])
+def test_instruments_outside_the_data_do_not_match_by_prefix(conn, query):
+    result = catalog.search_products(conn, query=query, only_available=False)
+    assert result["total_matches"] == 0
+    assert "note" in result
+
+
+@pytest.mark.parametrize(
+    "query, category",
+    [
+        ("violão barato", "Violões"),
+        ("violão mais barato", "Violões"),
+        ("violão bom", "Violões"),
+        ("melhor opção de violão", "Violões"),
+        ("ukulele bom", "Ukuleles"),
+    ],
+)
+def test_preference_words_do_not_turn_into_partial_matches(conn, query, category):
+    result = catalog.search_products(conn, query=query, limit=10)
+    assert "match_quality" not in result
+    assert result["total_matches"] > 0
+    assert {item["category"] for item in result["products"]} == {category}
+
+
+def test_product_id_beyond_sqlite_range_is_just_not_found(conn):
+    huge = 10**20
+    assert catalog.get_product_details(conn, huge)["error"] == "product_not_found"
+    assert catalog.calculate_offer(conn, huge, "pix")["error"] == "product_not_found"
 
 
 def test_filter_happens_before_limit_and_sort_is_by_effective_price(conn):

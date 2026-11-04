@@ -52,10 +52,15 @@ class OpenAIClient:
                 max_completion_tokens=config.MAX_COMPLETION_TOKENS,
             )
         except openai.OpenAIError as exc:
+            # Only the type: provider messages can echo part of the API key.
             raise LLMError(type(exc).__name__) from exc
         if not response.choices:
             raise LLMError("empty response")
-        message = response.choices[0].message
+        choice = response.choices[0]
+        # A cut-off reply could state half a fact, so it never reaches the customer as an answer.
+        if choice.finish_reason in ("length", "content_filter"):
+            raise LLMError(f"finish_reason={choice.finish_reason}")
+        message = choice.message
         calls = [
             ToolCall(call.id, call.function.name, call.function.arguments)
             for call in message.tool_calls or []

@@ -130,7 +130,11 @@ def get_order_status(
                 for row in rows
             ]
         }
-    row = conn.execute(
-        "SELECT * FROM orders WHERE order_id = ? AND customer_id = ?", (order_id, customer_id)
-    ).fetchone()
+    try:
+        row = conn.execute(
+            "SELECT * FROM orders WHERE order_id = ? AND customer_id = ?", (order_id, customer_id)
+        ).fetchone()
+    except OverflowError:
+        # SQLite integers stop at 64 bits, so a longer number cannot be an existing order.
+        row = None
     return _order_detail(conn, row, today) if row else dict(NOT_ACCESSIBLE)
