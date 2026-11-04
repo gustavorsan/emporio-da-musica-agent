@@ -73,7 +73,7 @@ def main() -> int:
         customer = find_customer(conn, customer_id) if customer_id else None
         agent_options = {}
         if "now" in scenario:
-            # Pins the clock for scenarios that depend on store hours.
+            # Pins the clock for scenarios that depend on store hours or return deadlines.
             moment = datetime.fromisoformat(scenario["now"]).replace(tzinfo=config.STORE_TIMEZONE)
             agent_options["now"] = lambda moment=moment: moment
         agent = Agent(llm, conn, customer, log_path=config.LOG_PATH, **agent_options)

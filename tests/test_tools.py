@@ -29,12 +29,13 @@ def _walk(node):
             yield from _walk(value)
 
 
-def test_exposes_exactly_the_five_planned_tools():
+def test_exposes_exactly_the_six_tools():
     assert {schema["function"]["name"] for schema in tools.TOOL_SCHEMAS} == {
         "search_products",
         "get_product_details",
         "calculate_offer",
         "get_order_status",
+        "check_return_window",
         "search_knowledge",
     }
 

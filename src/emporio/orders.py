@@ -104,6 +104,17 @@ def _order_detail(conn: sqlite3.Connection, row: sqlite3.Row, today: date) -> di
     return order
 
 
+def find_owned_order(conn: sqlite3.Connection, customer_id: int, order_id: int) -> sqlite3.Row | None:
+    """Fetch an order only if it belongs to this customer; ownership is part of the query."""
+    try:
+        return conn.execute(
+            "SELECT * FROM orders WHERE order_id = ? AND customer_id = ?", (order_id, customer_id)
+        ).fetchone()
+    except OverflowError:
+        # SQLite integers stop at 64 bits, so a longer number cannot be an existing order.
+        return None
+
+
 def get_order_status(
     conn: sqlite3.Connection, customer_id: int | None, order_id: int | None, today: date
 ) -> dict:
@@ -130,11 +141,5 @@ def get_order_status(
                 for row in rows
             ]
         }
-    try:
-        row = conn.execute(
-            "SELECT * FROM orders WHERE order_id = ? AND customer_id = ?", (order_id, customer_id)
-        ).fetchone()
-    except OverflowError:
-        # SQLite integers stop at 64 bits, so a longer number cannot be an existing order.
-        row = None
+    row = find_owned_order(conn, customer_id, order_id)
     return _order_detail(conn, row, today) if row else dict(NOT_ACCESSIBLE)

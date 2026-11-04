@@ -9,19 +9,23 @@ from __future__ import annotations
 
 import json
 import math
+import re
 import sqlite3
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 from typing import Literal
 
 import openai
-from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, ValidationError, field_validator, model_validator
 
-from emporio import catalog, knowledge, orders
+from emporio import catalog, knowledge, orders, returns
 from emporio.catalog import ToolInputError
 
 # Far above any catalog price; larger values only reach the Decimal conversion as errors.
 MAX_PRICE_BRL = 1_000_000_000
+# A century is far beyond any purchase, and keeps date subtraction from overflowing.
+MAX_DAYS_AGO = 36_500
+_ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 _LOOKUP_FAILED = {
     "error": "lookup_failed",
@@ -94,6 +98,51 @@ class GetOrderStatus(_ToolArgs):
     order_id: int | None = None
 
 
+class CheckReturnWindow(_ToolArgs):
+    """Calcula, com a data de hoje, se o prazo de troca ou devolução está aberto.
+
+    Use sempre que o cliente perguntar se ainda está no prazo. reason: regret (arrependimento),
+    defect (defeito de fabricação) ou preference (troca por preferência). purchase_channel: online
+    ou store (loja física). Com número de pedido do cliente identificado, passe order_id para usar
+    a data de compra registrada. Datas exatas vão em purchase_date e received_date, no formato
+    AAAA-MM-DD. Para "ontem" ou "há 5 dias", use purchase_days_ago ou received_days_ago (hoje = 0,
+    ontem = 1). Previsão de entrega não é data de recebimento.
+    """
+
+    reason: Literal["regret", "defect", "preference"]
+    purchase_channel: Literal["online", "store"] | None = None
+    order_id: int | None = None
+    purchase_date: str | None = None
+    purchase_days_ago: int | None = None
+    received_date: str | None = None
+    received_days_ago: int | None = None
+
+    @field_validator("purchase_date", "received_date")
+    @classmethod
+    def _iso_date(cls, value: str | None) -> str | None:
+        # fromisoformat alone also accepts week dates and compact forms the schema does not promise.
+        if value is not None:
+            if not _ISO_DATE.fullmatch(value):
+                raise ValueError("use o formato AAAA-MM-DD")
+            date.fromisoformat(value)
+        return value
+
+    @field_validator("purchase_days_ago", "received_days_ago")
+    @classmethod
+    def _days_in_range(cls, value: int | None) -> int | None:
+        if value is not None and not 0 <= value <= MAX_DAYS_AGO:
+            raise ValueError(f"deve estar entre 0 e {MAX_DAYS_AGO}")
+        return value
+
+    @model_validator(mode="after")
+    def _one_form_per_date(self) -> "CheckReturnWindow":
+        if self.purchase_date is not None and self.purchase_days_ago is not None:
+            raise ValueError("informe purchase_date ou purchase_days_ago, não ambos")
+        if self.received_date is not None and self.received_days_ago is not None:
+            raise ValueError("informe received_date ou received_days_ago, não ambos")
+        return self
+
+
 class SearchKnowledge(_ToolArgs):
     """Busca no manual da loja: endereço, contatos, horários, pagamento, parcelamento, regras de promoção, trocas, devolução, frete, rastreio, garantia, atendimento e privacidade."""
 
@@ -121,6 +170,7 @@ _MODELS: dict[str, type[_ToolArgs]] = {
     "get_product_details": GetProductDetails,
     "calculate_offer": CalculateOffer,
     "get_order_status": GetOrderStatus,
+    "check_return_window": CheckReturnWindow,
     "search_knowledge": SearchKnowledge,
 }
 
@@ -145,6 +195,12 @@ class ToolOutcome:
     products: dict[int, str] = field(default_factory=dict)
 
 
+def _resolve_date(text: str | None, days_ago: int | None, today: date) -> date | None:
+    if text is not None:
+        return date.fromisoformat(text)
+    return None if days_ago is None else today - timedelta(days=days_ago)
+
+
 def _run(name: str, args: _ToolArgs, ctx: ToolContext) -> dict:
     if isinstance(args, SearchProducts):
         return catalog.search_products(ctx.conn, **args.model_dump())
@@ -154,6 +210,17 @@ def _run(name: str, args: _ToolArgs, ctx: ToolContext) -> dict:
         return catalog.calculate_offer(ctx.conn, args.product_id, args.payment, args.installments)
     if isinstance(args, GetOrderStatus):
         return orders.get_order_status(ctx.conn, ctx.customer_id, args.order_id, ctx.today)
+    if isinstance(args, CheckReturnWindow):
+        return returns.check_return_window(
+            ctx.conn,
+            ctx.customer_id,
+            ctx.today,
+            args.reason,
+            args.purchase_channel,
+            args.order_id,
+            _resolve_date(args.purchase_date, args.purchase_days_ago, ctx.today),
+            _resolve_date(args.received_date, args.received_days_ago, ctx.today),
+        )
     if isinstance(args, SearchKnowledge):
         return knowledge.search(ctx.conn, args.question, args.tags)
     raise AssertionError(f"Unhandled tool: {name}")
@@ -190,6 +257,8 @@ def execute(name: str, raw_arguments: str, ctx: ToolContext) -> ToolOutcome:
         # A faulty tool must never end the customer's session; the type goes to the log only.
         return ToolOutcome(dict(_LOOKUP_FAILED), ok=False, error=f"unexpected:{type(exc).__name__}")
     sources = [item["section"] for item in payload.get("results", [])]
+    if "policy_section" in payload:
+        sources.append(payload["policy_section"])
     error = payload.get("error")
     return ToolOutcome(
         payload,

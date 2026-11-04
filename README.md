@@ -2,7 +2,7 @@
 
 Protótipo em Python de um agente de atendimento por texto para a loja fictícia Empório da Música, de Campo Grande/MS. O agente responde sobre produtos, preços, disponibilidade, pedidos e políticas da loja, em uma conversa pela linha de comando ou por uma página local no navegador.
 
-**A ideia central:** o modelo interpreta a mensagem e redige a resposta; preços, descontos, parcelas, disponibilidade e acesso a pedidos são resolvidos em Python.
+**A ideia central:** o modelo interpreta a mensagem e redige a resposta; preços, descontos, parcelas, disponibilidade, prazos de troca e devolução e acesso a pedidos são resolvidos em Python.
 
 > **Estado atual:** a parte determinística está implementada e coberta por testes. A validação com o modelo real e a captura das conversas estão pendentes.
 
@@ -52,7 +52,8 @@ Mensagem ──► agent.py ◄──► OpenAI (chamada de ferramentas)        
 | `catalog.py` | Busca, detalhes e oferta. |
 | `orders.py` | Pedidos do cliente da sessão. |
 | `knowledge.py` | Parse das políticas, índice e recuperação. |
-| `tools.py` | Contratos das cinco ferramentas e tratamento de erros. |
+| `returns.py` | Prazos de arrependimento, defeito, preferência e garantia legal. |
+| `tools.py` | Contratos das seis ferramentas e tratamento de erros. |
 | `llm.py` | Único ponto de contato com o SDK da OpenAI. |
 | `agent.py`, `prompts.py` | Ciclo de ferramentas, sessão e persona. |
 | `cli.py` | Comandos `prepare`, `chat` e `web`. |
@@ -64,7 +65,7 @@ Mensagem ──► agent.py ◄──► OpenAI (chamada de ferramentas)        
 
 **RAG híbrido com recuperação estruturada e textual.** Os dados da operação são relacionais e pedem filtros exatos, então vão para SQL; as políticas são texto e vão para busca textual. Perguntas mistas usam as duas fontes.
 
-**Ferramentas em vez de SQL livre.** O modelo só escolhe entre cinco operações com argumentos validados. Isso limita a superfície de consulta e mantém filtros, campos expostos e autorização no código. Nenhuma ferramenta lê e-mail ou telefone, de modo que um prompt injection não tem como obter esses dados.
+**Ferramentas em vez de SQL livre.** O modelo só escolhe entre seis operações com argumentos validados. Isso limita a superfície de consulta e mantém filtros, campos expostos e autorização no código. Nenhuma ferramenta lê e-mail ou telefone, de modo que um prompt injection não tem como obter esses dados.
 
 | Ferramenta | Função |
 | --- | --- |
@@ -72,7 +73,10 @@ Mensagem ──► agent.py ◄──► OpenAI (chamada de ferramentas)        
 | `get_product_details` | Descrição, especificações, status e estoque. |
 | `calculate_offer` | Valor final e condições por forma de pagamento. |
 | `get_order_status` | Pedido ou lista de pedidos do cliente da sessão. |
+| `check_return_window` | Calcula, com a data de hoje, se o prazo de troca ou devolução está aberto. |
 | `search_knowledge` | Trechos do manual, com seção, página e suposições. |
+
+**Prazos em Python.** O plano original previa cinco ferramentas, com o modelo comparando as datas. Contar dias é aritmética, e errar nisso nega ou concede um direito ao cliente, então a conta ganhou a mesma regra dos preços. A data de hoje vem da aplicação, no fuso da loja; o modelo só interpreta o que o cliente disse e relata o resultado.
 
 **OpenAI com Chat Completions.** A API oferece chamada de ferramentas com schemas estritos, que reduz argumentos malformados. O histórico explícito combina com a gestão da sessão em memória. O modelo é configurável por `OPENAI_MODEL`, e não há camada multiprovedor, que não se justifica em um protótipo.
 
@@ -100,6 +104,10 @@ O enunciado pede que ambiguidades sejam resolvidas e documentadas.
 | Promoção e formas de pagamento | A promoção vale para qualquer forma de pagamento, e o parcelamento incide sobre o preço promocional. |
 | Busca por orçamento | Filtra pelo preço efetivo: promoção ativa e, somente se o cliente pedir, PIX. A Ohana CK-20 de R$ 549,00 entra em “até R$ 500” por R$ 439,20. |
 | Tipo de instrumento na busca | “Violão” ou “viola” selecionam a categoria, não uma menção na descrição: um ukulele que cita violão não entra em “violões”. |
+| Contagem de prazos | Dias corridos: o dia do evento é o dia 0, e o último dia ainda vale. Um prazo que termina em dia sem expediente não é prorrogado, pois o manual não prevê isso. |
+| Início de cada prazo | Arrependimento conta do recebimento, e troca por defeito, da compra, como diz o manual. Sem data registrada de entrega, o recebimento é o informado pelo cliente; a previsão nunca o substitui. |
+| Início da troca por preferência | O manual não define. O agente só conclui o que vale para os dois inícios possíveis; se a conclusão mudar conforme o início, orienta a confirmação com a equipe. |
+| Arrependimento em loja física | A seção 4.1 trata de compras online. O agente não aplica esse direito à loja física e apresenta as outras modalidades. |
 | Parcela mínima | O §3.1 prevalece sobre o R$ 100,00 geral do §3. “Exceto abaixo de R$ 50,00” foi lido como mínimo de R$ 50,00 em até 3x. |
 | Arredondamento | Meio centavo arredonda para cima. Centavos restantes vão para as primeiras parcelas, e a menor parcela é a comparada ao mínimo. |
 | WhatsApp | Divergente no manual: prioriza o (67) 3321-4500 da seção específica do canal. O (67) 3341-4444 fica como telefone geral. |
@@ -118,8 +126,8 @@ Inconsistências encontradas nos dados, preservadas e não corrigidas:
 
 ## Verificação
 
-- **Testes determinísticos (`pytest`):** carga, preços, parcelas, disponibilidade, titularidade, recuperação das políticas, mecânica do ciclo do agente e API da página local. Os testes do ciclo usam um cliente simulado e não avaliam respostas do modelo.
-- **Cenários de aceite (`evals/`):** 29 cenários com o modelo real, verificando fatos e ferramentas chamadas, sem exigir texto idêntico. Tom e persona são revistos na leitura das conversas.
+- **Testes determinísticos (`pytest`):** carga, preços, parcelas, prazos de devolução, disponibilidade, titularidade, recuperação das políticas, mecânica do ciclo do agente e API da página local. Os testes do ciclo usam um cliente simulado e não avaliam respostas do modelo.
+- **Cenários de aceite (`evals/`):** 36 cenários com o modelo real, verificando fatos e ferramentas chamadas, sem exigir texto idêntico. Tom e persona são revistos na leitura das conversas.
 - **Conversas de exemplo (`conversations/`):** transcrições de execuções reais da CLI, com modelo e ferramentas usadas.
 
 Esses testes cobrem os cenários avaliados e não garantem o comportamento para toda entrada possível. Prompt e testes não eliminam alucinação ou prompt injection; por isso, cálculo, autorização e bloqueio de escrita ficam no código.
@@ -127,7 +135,7 @@ Esses testes cobrem os cenários avaliados e não garantem o comportamento para 
 ## Limitações conhecidas
 
 - O agente não executa ações: não registra reclamações, não abre devoluções, não faz reembolsos e não envia mensagens. Ele orienta e indica os canais da loja, ainda que o manual preveja o registro da reclamação.
-- O prazo de devolução é avaliado pelo modelo, a partir da data informada e da data atual. Não há cálculo em Python para isso, e casos limítrofes são orientados à equipe.
+- A conta do prazo é determinística, mas depende do que entra nela: a base não registra a entrega real nem o canal da compra, e é o modelo que traduz a fala do cliente em datas e no tipo de caso.
 - Os dados são um retrato dos CSVs importados, sem sincronização com estoque ou transportadoras.
 - A busca textual depende dos aliases curados e pode falhar em paráfrases não previstas.
 - A busca por atributos é textual sobre nome, descrição e especificações; não há filtros estruturados por atributo.
@@ -140,7 +148,6 @@ Esses testes cobrem os cenários avaliados e não garantem o comportamento para 
 
 - Autenticação real, em vez da sessão de demonstração.
 - Avaliação de retrieval com mais paráfrases e, se os resultados justificarem, busca híbrida com embeddings.
-- Ferramenta determinística para prazos de devolução e garantia.
 - Integrações para registrar reclamações e encaminhar a atendentes humanos.
 - API e integração com WhatsApp, o principal canal remoto da loja.
 - Filtros estruturados por atributos, como cordas, eletrônica e tipo de corpo.
