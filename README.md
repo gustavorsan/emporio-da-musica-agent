@@ -1,168 +1,170 @@
-# Agente de atendimento — Empório da Música
+# Customer service agent — Empório da Música
 
-**Português** | [English](README.en.md)
+**English** | [Português](README.pt-BR.md)
 
-Protótipo em Python de um agente de atendimento por texto para a loja fictícia Empório da Música, de Campo Grande/MS. O agente responde sobre produtos, preços, disponibilidade, pedidos e políticas da loja, em uma conversa pela linha de comando ou por uma página local no navegador.
+Python prototype of a text-based customer service agent for Empório da Música, a fictional musical instrument store in Campo Grande, Brazil. The agent answers questions about products, prices, availability, orders and store policies, in a conversation on the command line or on a local web page.
 
-**A ideia central:** o modelo interpreta a mensagem e redige a resposta; preços, descontos, parcelas, disponibilidade, prazos de troca e devolução e acesso a pedidos são resolvidos em Python.
+**The central idea:** the model interprets the message and writes the reply; prices, discounts, installments, availability, exchange and return deadlines, and order access are resolved in Python.
 
-## Como executar
+The agent, its policies and the example conversations are in Brazilian Portuguese, the language of the store's customers.
 
-Requer Python 3.11 ou superior (validado em 3.14.6, no Windows 11) e uma chave da API da OpenAI.
+## How to run
+
+Requires Python 3.11 or later (validated on 3.14.6, on Windows 11) and an OpenAI API key.
 
 ```powershell
 python -m venv .venv
 .venv\Scripts\Activate.ps1
 pip install -e ".[dev]"
-Copy-Item .env.example .env      # preencha OPENAI_API_KEY e OPENAI_MODEL
-python -m emporio prepare        # gera o banco e o índice em var/
-python -m emporio web            # abre em http://127.0.0.1:8000; Ctrl+C encerra
-python -m emporio chat           # ou conversa no terminal; "sair" encerra
+Copy-Item .env.example .env      # fill in OPENAI_API_KEY and OPENAI_MODEL
+python -m emporio prepare        # builds the database and the index in var/
+python -m emporio web            # opens at http://127.0.0.1:8000; Ctrl+C stops it
+python -m emporio chat           # or chat in the terminal; "sair" exits
 ```
 
-Em Linux ou macOS, ative o ambiente com `source .venv/bin/activate` e copie o arquivo com `cp`.
+On Linux or macOS, activate the environment with `source .venv/bin/activate` and copy the file with `cp`.
 
-| Comando | O que faz |
+| Command | What it does |
 | --- | --- |
-| `python -m emporio web --port 8080` | Usa outra porta para a página local. |
-| `python -m emporio chat --customer-id 6` | Atalho para testes: pula a verificação e inicia como esse cliente. Não existe na página. |
-| `python -m emporio chat --show-tools` | Mostra as ferramentas usadas em cada resposta. |
-| `python -m emporio chat --script arq.txt --transcript saida.md` | Envia as mensagens de um arquivo ao modelo real e grava a conversa. Se o modelo falhar, encerra com erro e não grava a transcrição. |
-| `pytest` | Roda os testes determinísticos, sem rede e sem chave. |
-| `python evals/run.py` | Roda os cenários de aceite com o modelo real (consome créditos da API). |
-| `python conversations/capture.py` | Regenera as conversas de exemplo (consome créditos da API). |
+| `python -m emporio web --port 8080` | Uses another port for the local page. |
+| `python -m emporio chat --customer-id 6` | Testing shortcut: skips verification and starts as that customer. Not available on the page. |
+| `python -m emporio chat --show-tools` | Shows the tools used in each reply. |
+| `python -m emporio chat --script file.txt --transcript output.md` | Sends the messages in a file to the real model and saves the conversation. If the model fails, it exits with an error and saves no transcript. |
+| `pytest` | Runs the deterministic tests, with no network and no key. |
+| `python evals/run.py` | Runs the acceptance scenarios against the real model (uses API credits). |
+| `python conversations/capture.py` | Regenerates the example conversations (uses API credits). |
 
-Para testar pedidos, pergunte por um pedido e informe na conversa o e-mail e o telefone do cliente, que estão no CSV de clientes em `data/`: o cliente 6 é dono do pedido 9, o cliente 2 do pedido 8, o cliente 12 do pedido 3 e o cliente 7 dos pedidos 2 e 20.
+To test orders, ask about an order and give the customer's e-mail and phone in the conversation; they are in the customers CSV in `data/`. Customer 6 owns order 9, customer 2 owns order 8, customer 12 owns order 3, and customer 7 owns orders 2 and 20.
 
-## Arquitetura
+## Architecture
 
 ```text
-CSVs ──► carga validada ──► SQLite ◄── consultas parametrizadas ── catalog.py, orders.py
-Markdown ──► índice FTS5 ──────┘  ◄── busca lexical ────────────── knowledge.py
+CSVs ──► validated load ──► SQLite ◄── parameterized queries ───── catalog.py, orders.py
+Markdown ──► FTS5 index ───────┘  ◄── lexical search ───────────── knowledge.py
                                                                         ▲
-Mensagem ──► agent.py ◄──► OpenAI (chamada de ferramentas)              │
-                 └──────► tools.py: valida argumentos e executa ────────┘
+Message ──► agent.py ◄──► OpenAI (tool calling)                         │
+                 └──────► tools.py: validates arguments and executes ───┘
 ```
 
-| Módulo em `src/emporio/` | Responsabilidade |
+| Module in `src/emporio/` | Responsibility |
 | --- | --- |
-| `loader.py`, `schema.sql` | Carga validada e atômica dos CSVs. |
-| `db.py` | Conexão de atendimento em modo somente leitura. |
-| `pricing.py` | Promoção, PIX, parcelamento e aritmética em centavos. |
-| `catalog.py` | Busca, detalhes e oferta. |
-| `orders.py` | Verificação de identidade e pedidos do cliente da sessão. |
-| `knowledge.py` | Parse das políticas, índice e recuperação. |
-| `returns.py` | Prazos de arrependimento, defeito, preferência e garantia legal. |
-| `tools.py` | Contratos das sete ferramentas e tratamento de erros. |
-| `llm.py` | Único ponto de contato com o SDK da OpenAI. |
-| `agent.py`, `prompts.py` | Ciclo de ferramentas, sessão e persona. |
-| `cli.py` | Comandos `prepare`, `chat` e `web`. |
-| `web.py`, `static/` | Servidor local e página de conversa, sobre o mesmo agente da CLI. |
+| `loader.py`, `schema.sql` | Validated, atomic load of the CSVs. |
+| `db.py` | Read-only connection used for customer service. |
+| `pricing.py` | Promotions, PIX, installments and arithmetic in cents. |
+| `catalog.py` | Search, details and offers. |
+| `orders.py` | Identity verification and the session customer's orders. |
+| `knowledge.py` | Policy parsing, indexing and retrieval. |
+| `returns.py` | Deadlines for regret, defects, preference and the legal warranty. |
+| `tools.py` | Contracts of the seven tools and error handling. |
+| `llm.py` | Single point of contact with the OpenAI SDK. |
+| `agent.py`, `prompts.py` | Tool loop, session and persona. |
+| `cli.py` | The `prepare`, `chat` and `web` commands. |
+| `web.py`, `static/` | Local server and chat page, on top of the same agent as the CLI. |
 
-## Decisões técnicas
+## Technical decisions
 
-**Function calling, sem framework de agentes.** O ciclo é uma repetição curta: chamar o modelo, executar ferramentas, devolver resultados. LangChain ou LangGraph acrescentariam abstrações sem resolver um problema real aqui, e o fluxo explícito facilita testar limites de ciclos, falhas e corte de histórico.
+**Function calling, with no agent framework.** The loop is a short repetition: call the model, run tools, return the results. LangChain or LangGraph would add abstractions without solving a real problem here, and the explicit flow makes it easier to test loop limits, failures and history trimming.
 
-**RAG híbrido com recuperação estruturada e textual.** Os dados da operação são relacionais e pedem filtros exatos, então vão para SQL; as políticas são texto e vão para busca textual. Perguntas mistas usam as duas fontes.
+**Hybrid RAG with structured and text retrieval.** Operational data is relational and needs exact filters, so it goes to SQL; policies are text, so they go to text search. Mixed questions use both sources.
 
-**Ferramentas em vez de SQL livre.** O modelo só escolhe entre sete operações com argumentos validados. Isso limita a superfície de consulta e mantém filtros, campos expostos e autorização no código. Nenhuma ferramenta devolve e-mail ou telefone: `verify_identity` só os compara, de modo que um prompt injection não tem como obter esses dados.
+**Tools instead of free-form SQL.** The model only chooses among seven operations with validated arguments. This limits the query surface and keeps filters, exposed fields and authorization in the code. No tool returns an e-mail or phone: `verify_identity` only compares them, so a prompt injection has no way to obtain this data.
 
-| Ferramenta | Função |
+| Tool | Purpose |
 | --- | --- |
-| `search_products` | Busca por texto, categoria e preço. Calcula o preço efetivo antes de filtrar, ordenar e limitar. |
-| `get_product_details` | Descrição, especificações, status e estoque. |
-| `calculate_offer` | Valor final e condições por forma de pagamento. |
-| `verify_identity` | Confirma o cliente pelo e-mail e telefone informados na conversa. |
-| `get_order_status` | Pedido ou lista de pedidos do cliente da sessão. |
-| `check_return_window` | Calcula, com a data de hoje, se o prazo de troca ou devolução está aberto. |
-| `search_knowledge` | Trechos do manual, com seção, página e suposições. |
+| `search_products` | Search by text, category and price. Computes the effective price before filtering, sorting and limiting. |
+| `get_product_details` | Description, specifications, status and stock. |
+| `calculate_offer` | Final amount and conditions by payment method. |
+| `verify_identity` | Confirms the customer from the e-mail and phone given in the conversation. |
+| `get_order_status` | One order or the list of orders of the session customer. |
+| `check_return_window` | Computes, using today's date, whether the exchange or return deadline is open. |
+| `search_knowledge` | Excerpts from the manual, with section, page and assumptions. |
 
-**Prazos em Python.** O plano original previa cinco ferramentas, com o modelo comparando as datas. Contar dias é aritmética, e errar nisso nega ou concede um direito ao cliente, então a conta ganhou a mesma regra dos preços. A data de hoje vem da aplicação, no fuso da loja; o modelo só interpreta o que o cliente disse e relata o resultado.
+**Deadlines in Python.** The original plan had five tools, with the model comparing dates. Counting days is arithmetic, and a mistake denies or grants a customer's right, so this calculation follows the same rule as prices. Today's date comes from the application, in the store's time zone; the model only interprets what the customer said and reports the result.
 
-**Identificação na conversa.** O agente pede e-mail e telefone somente quando precisa consultar um pedido. O código só compara valores que o próprio cliente digitou na conversa e só então define o cliente da sessão, de modo que o modelo não escolhe quem é o cliente nem pode inventar os dados. Pedir os dois não é excesso: um e-mail se repete entre dois clientes na base, e sozinho poderia expor os pedidos de outra pessoa. A falha é idêntica para qualquer dado errado, há três tentativas por conversa, e a identidade não muda depois de confirmada. E-mail e telefone não entram no log nem no registro de ferramentas exibido.
+**Identification in the conversation.** The agent asks for e-mail and phone only when it needs to look up an order. The code only compares values the customer actually typed in the conversation, and only then sets the session customer, so the model neither chooses the customer nor can invent the data. Asking for both is not excessive: one e-mail is shared by two customers in the data, and alone it could expose another person's orders. A failure looks the same whichever field was wrong, there are three attempts per conversation, and the identity does not change once confirmed. E-mail and phone stay out of the log and of the displayed tool record.
 
-**OpenAI com Chat Completions.** A API oferece chamada de ferramentas com schemas estritos, que reduz argumentos malformados. O histórico explícito combina com a gestão da sessão em memória. O modelo é configurável por `OPENAI_MODEL`, e não há camada multiprovedor, que não se justifica em um protótipo. 
+**OpenAI with Chat Completions.** The API offers tool calling with strict schemas, which reduces malformed arguments. The explicit history fits the in-memory session management. The model is configurable through `OPENAI_MODEL`, and there is no multi-provider layer, which a prototype does not justify.
 
-**Modelo `gpt-5.4-mini`.** O agente precisa de chamada de ferramentas confiável, não de raciocínio longo, pois cálculos e regras ficam no código. Esse modelo aceita ferramentas no Chat Completions sem configuração adicional, e o custo (US$ 0,75 de entrada e US$ 4,50 de saída por milhão de tokens, em 04/11/2026) permitiu repetir os cenários várias vezes. Pela documentação da OpenAI, o `gpt-6.1-terra` exige a API Responses para ferramentas, e o `gpt-6-luna` exige `reasoning_effort=none`. As falhas observadas foram omissões intermitentes, descritas em Verificação, e não erros de cálculo, que ficam no código.
+**The `gpt-5.4-mini` model.** The agent needs reliable tool calling rather than long reasoning, since calculations and rules live in the code. This model accepts tools in Chat Completions with no additional configuration, and its cost (US$ 0.75 input and US$ 4.50 output per million tokens, as of 2026-11-04) allowed the scenarios to be repeated many times. According to the OpenAI documentation, `gpt-6.1-terra` requires the Responses API for tools, and `gpt-6-luna` requires `reasoning_effort=none`. The failures observed were intermittent omissions, described under Verification, not calculation errors, as those live in the code.
 
-**SQLite com `sqlite3`.** Não exige servidor, permite joins e tem FTS5. O banco é gerado localmente: a carga valida tudo em um arquivo temporário e só então substitui o anterior, de modo que um erro nunca deixa um banco parcial. Dinheiro fica em centavos inteiros, com `Decimal` nos descontos.
+**SQLite with `sqlite3`.** It needs no server, allows joins and has FTS5. The database is generated locally: the load validates everything in a temporary file and only then replaces the previous one, so an error never leaves a partial database. Money is stored in integer cents, with `Decimal` for discounts.
 
-**FTS5 em vez de embeddings.** O manual é pequeno e seus termos são previsíveis, e a busca lexical é simples de reproduzir e depurar. Como o FTS5 não tem stemmer em português, a consulta combina termos com OR e prefixo, e cada seção tem aliases curados (“me arrependi”, “quero devolver”) com peso maior. Seções relacionadas são trazidas junto, para que PIX venha com a regra de não cumulatividade. Embeddings ficam como evolução, caso avaliações mostrem falhas com paráfrases.
+**FTS5 instead of embeddings.** The manual is small and its terms are predictable, and lexical search is simple to reproduce and debug. Since FTS5 has no Portuguese stemmer, the query combines terms with OR and prefixes, and each section has curated aliases (“me arrependi”, “quero devolver”) with a higher weight. Related sections are retrieved together, so PIX comes with the non-cumulative discount rule. Embeddings remain a possible evolution, if evaluations show failures with paraphrases.
 
-**Políticas em Markdown com YAML.** O texto do manual fica separado das interpretações, registradas em `assumptions`, com página e versão de origem. O PDF, marcado como de uso restrito, é material do desafio e não fica neste repositório: as seções em `knowledge/` preservam o texto, com página e versão de origem, e o campo `source` cita esse arquivo. O índice é reconstruído a partir desses arquivos.
+**Policies in Markdown with YAML.** The manual's text is kept apart from the interpretations, recorded in `assumptions`, with source page and version. The PDF, marked for restricted use, is challenge material and is not in this repository: the sections in `knowledge/` preserve the text, with source page and version, and the `source` field cites that file. The index is rebuilt from these files.
 
-**Prompt.** O prompt de sistema define a persona do §7.1 do manual, quando consultar cada fonte, as regras que o modelo não pode contornar e o que ele não pode alegar ter feito. Data, hora e situação da loja são calculadas em Python e injetadas a cada chamada.
+**Prompt.** The system prompt defines the persona from §7.1 of the manual, when to consult each source, the rules the model cannot bypass and what it must not claim to have done. Date, time and store status are computed in Python and injected on every call.
 
-**Página local sem framework.** A página facilita testar o agente à mão, sem mudar suas regras: usa o mesmo `Agent` da CLI, e o cliente da sessão continua definido pela aplicação, fora do alcance do modelo. O servidor usa só a biblioteca padrão, pois um protótipo de uma página não justifica uma dependência nova. Por expor uma chave de API paga na máquina, ele escuta apenas em `127.0.0.1`, recusa outros `Host` e `Origin`, para que um site aberto no navegador não consiga usar a chave, e nunca interpreta a resposta do modelo como HTML.
+**Local page with no framework.** The page makes it easier to test the agent by hand without changing its rules: it uses the same `Agent` as the CLI, and the session customer is still set by the application, out of the model's reach. The server uses only the standard library, as a one-page prototype does not justify a new dependency. Because it fronts a paid API key on the machine, it listens only on `127.0.0.1`, refuses other `Host` and `Origin` values, so a website open in the browser cannot use the key, and never interprets the model's reply as HTML.
 
-**CLI e histórico em memória.** O enunciado foca no agente, e a CLI basta para demonstrá-lo e capturar as conversas de exemplo. O histórico é mantido durante a sessão, com os produtos discutidos no prompt para resolver “e no PIX?”. Ele é cortado por turno inteiro, sem separar chamadas de ferramenta de seus resultados. Persistir conversas não traria ganho nos cenários avaliados e criaria um novo cuidado com dados pessoais.
+**CLI and in-memory history.** The challenge focuses on the agent, and the CLI is enough to demonstrate it and capture the example conversations. History is kept during the session, with the discussed products in the prompt to resolve “e no PIX?” (“what about with PIX?”). It is trimmed by whole turns, never separating tool calls from their results. Persisting conversations would bring no gain in the evaluated scenarios and would create a new concern with personal data.
 
-## Suposições
+## Assumptions
 
-O enunciado pede que ambiguidades sejam resolvidas e documentadas.
+The challenge asks for ambiguities to be resolved and documented.
 
-| Situação | Decisão |
+| Situation | Decision |
 | --- | --- |
-| Disponibilidade | À venda somente com `status = active` e estoque positivo: há produtos descontinuados e “em breve” com estoque. |
-| Promoção | `is_active` é a única fonte de vigência, pois não há datas. A Black Friday citada no manual não concede desconto por si só em novembro. |
-| Várias promoções ativas no mesmo produto | Não ocorre nos dados atuais. Se ocorrer, nenhum preço promocional é escolhido, e o agente orienta a confirmação. |
-| Promoção e formas de pagamento | A promoção vale para qualquer forma de pagamento, e o parcelamento incide sobre o preço promocional. |
-| Busca por orçamento | Filtra pelo preço efetivo: promoção ativa e, somente se o cliente pedir, PIX. A Ohana CK-20 de R$ 549,00 entra em “até R$ 500” por R$ 439,20. |
-| Tipo de instrumento na busca | “Violão” ou “viola” selecionam a categoria, não uma menção na descrição: um ukulele que cita violão não entra em “violões”. |
-| Contagem de prazos | Dias corridos: o dia do evento é o dia 0, e o último dia ainda vale. Um prazo que termina em dia sem expediente não é prorrogado, pois o manual não prevê isso. |
-| Início de cada prazo | Arrependimento conta do recebimento, e troca por defeito, da compra, como diz o manual. Sem data registrada de entrega, o recebimento é o informado pelo cliente; a previsão nunca o substitui. |
-| Início da troca por preferência | O manual não define. O agente só conclui o que vale para os dois inícios possíveis; se a conclusão mudar conforme o início, orienta a confirmação com a equipe. |
-| Arrependimento em loja física | A seção 4.1 trata de compras online. O agente não aplica esse direito à loja física e apresenta as outras modalidades. |
-| Parcela mínima | O §3.1 prevalece sobre o R$ 100,00 geral do §3. “Exceto abaixo de R$ 50,00” foi lido como mínimo de R$ 50,00 em até 3x. |
-| Arredondamento | Meio centavo arredonda para cima. Centavos restantes vão para as primeiras parcelas, e a menor parcela é a comparada ao mínimo. |
-| WhatsApp | Divergente no manual: prioriza o (67) 3321-4500 da seção específica do canal. O (67) 3341-4444 fica como telefone geral. |
-| E-mail | Adota o endereço da capa, sem acento no domínio. |
-| Frete de exatamente R$ 500,00 | O manual não define. O agente orienta a confirmação, sem escolher uma regra. |
-| Fuso horário | `America/Campo_Grande`, o fuso da loja. Feriados não constam dos dados e são tratados como informação indisponível. |
-| Identificação | E-mail e telefone do cadastro, verificados no código. Dados que aparecem na conversa não provam posse, então isso é uma verificação de protótipo, não autenticação. |
+| Availability | For sale only with `status = active` and positive stock: some discontinued and “coming soon” products have stock. |
+| Promotion | `is_active` is the only source of validity, as there are no dates. The Black Friday mentioned in the manual grants no discount by itself in November. |
+| Several active promotions on one product | Does not occur in the current data. If it did, no promotional price would be chosen, and the agent would advise confirming. |
+| Promotions and payment methods | A promotion applies to any payment method, and installments are computed on the promotional price. |
+| Budget search | Filters by effective price: active promotion and, only if the customer asks, PIX. The Ohana CK-20 at R$ 549.00 fits “up to R$ 500” at R$ 439.20. |
+| Instrument type in search | “Violão” (guitar) or “viola” select the category, not a mention in the description: a ukulele that mentions “violão” is not listed among guitars. |
+| Counting deadlines | Calendar days: the day of the event is day 0, and the last day still counts. A deadline ending on a closed day is not extended, as the manual does not provide for this. |
+| Start of each deadline | Regret counts from receipt and defect exchange from purchase, as the manual says. With no recorded delivery date, receipt is what the customer states; the forecast never replaces it. |
+| Start of the preference exchange | The manual does not define it. The agent only concludes what holds for both possible starts; if the conclusion depends on the start, it advises confirming with the team. |
+| Regret on in-store purchases | Section 4.1 covers online purchases. The agent does not apply this right to the physical store and presents the other options. |
+| Minimum installment | §3.1 prevails over the general R$ 100.00 in §3. “Except below R$ 50.00” was read as a R$ 50.00 minimum for up to 3 installments. |
+| Rounding | Half a cent rounds up. Remaining cents go to the first installments, and the smallest installment is the one compared to the minimum. |
+| WhatsApp | The manual is inconsistent: (67) 3321-4500 from the channel's own section takes priority. (67) 3341-4444 is treated as the general phone. |
+| E-mail | Uses the address on the cover, with no accent in the domain. |
+| Shipping at exactly R$ 500.00 | The manual does not define it. The agent advises confirming, without choosing a rule. |
+| Time zone | `America/Campo_Grande`, the store's time zone. Holidays are not in the data and are treated as unavailable information. |
+| Identification | E-mail and phone on record, verified in the code. Data that appears in a conversation does not prove ownership, so this is a prototype check, not authentication. |
 
-Inconsistências encontradas nos dados, preservadas e não corrigidas:
+Inconsistencies found in the data, preserved and not corrected:
 
-- Os totais dos pedidos 3 e 20 diferem da soma pelos preços atuais. O total registrado é tratado como histórico.
-- Os pedidos 9, 16 e 18 têm parcelas abaixo do mínimo atual. A regra vale para ofertas novas, não para o histórico.
-- Os pedidos 3 e 14 contêm um produto “em breve”, e o pedido 3 consta como entregue. Itens de pedido nunca indicam disponibilidade.
-- O pedido 8 está como enviado, com previsão vencida. O agente relata o registro e orienta a confirmação, sem afirmar atraso ou entrega.
-- O manual cita mais de 300 instrumentos, e os dados trazem 65. O agente responde sobre o que consta, sem concluir que a loja não trabalha com o restante.
+- The totals of orders 3 and 20 differ from the sum at current prices. The recorded total is treated as historical.
+- Orders 9, 16 and 18 have installments below the current minimum. The rule applies to new offers, not to history.
+- Orders 3 and 14 contain a “coming soon” product, and order 3 is recorded as delivered. Order items never indicate availability.
+- Order 8 is recorded as shipped, with a past forecast. The agent reports the record and advises confirming, without stating a delay or a delivery.
+- The manual mentions over 300 instruments, and the data has 65. The agent answers about what is listed, without concluding that the store does not carry the rest.
 
-## Verificação
+## Verification
 
-- **Testes determinísticos (`pytest`):** carga, preços, parcelas, prazos de devolução, disponibilidade, titularidade, recuperação das políticas, mecânica do ciclo do agente e API da página local. Os testes do ciclo usam um cliente simulado e não avaliam respostas do modelo.
-- **Cenários de aceite (`evals/`):** 44 cenários com o modelo real, verificando fatos e ferramentas chamadas, sem exigir texto idêntico. Tom e persona são revistos na leitura das conversas. O modelo varia entre execuções: nas três últimas rodadas com `gpt-5.4-mini`, em 04/11/2026, passaram 43, 43 e 40 de 44. As falhas foram intermitentes: o modelo às vezes pula uma consulta, omite os valores das parcelas ou abre com “dá sim” antes de ressalvar que um produto já testado depende da avaliação da equipe. Os checks foram mantidos rígidos, em vez de afrouxados para zerar essas falhas.
-- **Conversas de exemplo (`conversations/`):** cinco transcrições de execuções reais da CLI, com modelo e ferramentas usadas. Revê-las encontrou erros que os checks não pegaram, como parcelas mal interpretadas, corrigidos antes desta captura. O e-mail e o telefone na conversa 03 são do cliente fictício do CSV.
+- **Deterministic tests (`pytest`):** loading, prices, installments, return deadlines, availability, ownership, policy retrieval, agent loop mechanics and the local page's API. The loop tests use a simulated client and do not evaluate model replies.
+- **Acceptance scenarios (`evals/`):** 44 scenarios with the real model, checking facts and tools called, without requiring identical text. Tone and persona are reviewed by reading the conversations. The model varies between runs: in the last three rounds with `gpt-5.4-mini`, on 2026-11-04, 43, 43 and 40 of 44 passed. The failures were intermittent: the model sometimes skips a lookup, omits installment values, or opens with “dá sim” (“yes, you can”) before noting that an already tested product depends on the team's assessment. The checks were kept strict rather than loosened to clear these failures.
+- **Example conversations (`conversations/`):** five transcripts of real CLI runs, with the model and tools used. Reviewing them found errors the checks had missed, such as misread installments, which were fixed before this capture. The e-mail and phone in conversation 03 belong to the fictional customer in the CSV.
 
-Esses testes cobrem os cenários avaliados e não garantem o comportamento para toda entrada possível. Prompt e testes não eliminam alucinação ou prompt injection; por isso, cálculo, autorização e bloqueio de escrita ficam no código.
+These tests cover the evaluated scenarios and do not guarantee the behavior for every possible input. Prompts and tests do not eliminate hallucination or prompt injection; that is why calculation, authorization and the write block live in the code.
 
-## Limitações conhecidas
+## Known limitations
 
-- O agente não executa ações: não registra reclamações, não abre devoluções, não faz reembolsos e não envia mensagens. Ele orienta e indica os canais da loja, ainda que o manual preveja o registro da reclamação.
-- A conta do prazo é determinística, mas depende do que entra nela: a base não registra a entrega real nem o canal da compra, e é o modelo que traduz a fala do cliente em datas e no tipo de caso. O uso da ferramenta é instruído no prompt, não imposto pelo código, então o modelo pode ocasionalmente responder sem chamá-la.
-- Os dados são um retrato dos CSVs importados, sem sincronização com estoque ou transportadoras.
-- A busca textual depende dos aliases curados e pode falhar em paráfrases não previstas.
-- A busca por atributos é textual sobre nome, descrição e especificações; não há filtros estruturados por atributo.
-- Não há cotação de frete, pois ela depende de CEP, peso e dimensões, que não foram fornecidos.
-- Não há calendário de feriados nem de horários especiais.
-- O histórico se perde ao encerrar a sessão, ao recarregar a página ou ao iniciar uma nova conversa.
-- Quem souber o e-mail e o telefone de um cliente consegue consultar os pedidos dele, pois não há código enviado ao cliente nem senha. Esses dados, digitados na conversa, também são enviados ao provedor do modelo e aparecem na transcrição da CLI se ela for gravada.
-- A página é só para uso local: não tem login nem HTTPS, e não deve ser exposta na rede. Ela não grava transcrições, papel que fica com a CLI.
+- The agent takes no actions: it does not record complaints, open returns, issue refunds or send messages. It advises and points to the store's channels, even though the manual provides for recording complaints.
+- The deadline calculation is deterministic but depends on its inputs: the data records neither the actual delivery nor the purchase channel, and the model translates what the customer says into dates and a case type. Using the tool is instructed by the prompt, not enforced by the code, so the model may occasionally reply without calling it.
+- The data is a snapshot of the imported CSVs, with no synchronization with stock or carriers.
+- Text search depends on the curated aliases and may fail on unforeseen paraphrases.
+- Attribute search is textual over name, description and specifications; there are no structured attribute filters.
+- There is no shipping quote, as it depends on postal code, weight and dimensions, which were not provided.
+- There is no calendar of holidays or special hours.
+- History is lost when the session ends, when the page is reloaded or when a new conversation starts.
+- Anyone who knows a customer's e-mail and phone can look up their orders, as there is no code sent to the customer and no password. This data, typed in the conversation, is also sent to the model provider and appears in the CLI transcript if one is saved.
+- The page is for local use only: it has no login or HTTPS and must not be exposed on a network. It does not save transcripts, which is the CLI's role.
 
-## O que eu faria com mais tempo
+## What I would do with more time
 
-- Autenticação real, com código enviado ao cliente, em vez de comparar e-mail e telefone.
-- Verificação da resposta em código antes de enviá-la ao cliente: conferir se valores e datas têm origem nas ferramentas e se o plano de parcelas aparece inteiro, com uma nova tentativa em caso de reprovação.
-- Avaliação de retrieval com mais paráfrases e, se os resultados justificarem, busca híbrida com embeddings.
-- Integrações para registrar reclamações e encaminhar a atendentes humanos.
-- API e integração com WhatsApp, o principal canal remoto da loja.
-- Filtros estruturados por atributos, como cordas, eletrônica e tipo de corpo.
-- Observabilidade de custo e latência por conversa, e avaliações no CI.
+- Real authentication, with a code sent to the customer, instead of comparing e-mail and phone.
+- Code verification of each reply before it reaches the customer: checking that amounts and dates come from the tools and that the installment plan appears in full, with one retry on failure.
+- Retrieval evaluation with more paraphrases and, if the results justify it, hybrid search with embeddings.
+- Integrations to record complaints and hand over to human agents.
+- An API and WhatsApp integration, the store's main remote channel.
+- Structured attribute filters, such as strings, electronics and body type.
+- Cost and latency observability per conversation, and evaluations in CI.
 
-## Uso de assistentes de código
+## Use of coding assistants
 
-- **Codex:** análise do enunciado e dos dados, levantamento de requisitos, parecer sobre o design e plano de execução, registrados em [LEVANTAMENTO_REQUISITOS.md](LEVANTAMENTO_REQUISITOS.md), [PARECER_ADERENCIA_SYSTEM_DESIGN_V2.md](PARECER_ADERENCIA_SYSTEM_DESIGN_V2.md) e [PLANO_EXECUCAO.md](PLANO_EXECUCAO.md).
-- **Claude Code:** revisão do plano contra os dados, o que revelou lacunas como parcelas históricas abaixo do mínimo e o fuso da loja; implementação do código, das políticas, dos testes e dos cenários; redação deste README e da versão em inglês.
+- **Codex:** analysis of the challenge and the data, requirements gathering, a design review and the execution plan, recorded in Portuguese in [LEVANTAMENTO_REQUISITOS.md](LEVANTAMENTO_REQUISITOS.md), [PARECER_ADERENCIA_SYSTEM_DESIGN_V2.md](PARECER_ADERENCIA_SYSTEM_DESIGN_V2.md) and [PLANO_EXECUCAO.md](PLANO_EXECUCAO.md).
+- **Claude Code:** review of the plan against the data, which revealed gaps such as historical installments below the minimum and the store's time zone; implementation of the code, policies, tests and scenarios; writing this README and its Portuguese translation.
 
-**Meu papel:** decidi provedor, escopo e publicação, e revisei o resultado. Pedi uma revisão de erros e escolhi o que corrigir; solicitei a interface local, o cálculo de prazos em Python e a identificação na conversa; e corrigi o agente ao notar que ele perguntava em qual loja a compra foi feita, embora só exista uma. Os cálculos críticos foram conferidos contra os CSVs por testes automatizados, e as respostas do modelo, pela leitura das conversas, que encontrou erros que os testes não pegaram.
+**My role:** I decided on the provider, scope and publication, and reviewed the results. I asked for an error review and chose what to fix; requested the local interface, the deadline calculation in Python and the identification in the conversation; and corrected the agent when I noticed it was asking which store the purchase was made in, although there is only one. Critical calculations were checked against the CSVs by automated tests, and the model's replies by reading the conversations, which found errors the tests had missed.
