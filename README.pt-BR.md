@@ -97,7 +97,7 @@ Mensagem ──► agent.py ◄──► OpenAI (chamada de ferramentas)        
 
 **Página local sem framework.** A página facilita testar o agente à mão, sem mudar suas regras: usa o mesmo `Agent` da CLI, e o cliente da sessão continua definido pela aplicação, fora do alcance do modelo. O servidor usa só a biblioteca padrão, pois um protótipo de uma página não justifica uma dependência nova. Por expor uma chave de API paga na máquina, ele escuta apenas em `127.0.0.1`, recusa outros `Host` e `Origin`, para que um site aberto no navegador não consiga usar a chave, e nunca interpreta a resposta do modelo como HTML.
 
-**CLI e histórico em memória.** O enunciado foca no agente, e a CLI basta para demonstrá-lo e capturar as conversas de exemplo. O histórico é mantido durante a sessão, com os produtos discutidos no prompt para resolver “e no PIX?”. Ele é cortado por turno inteiro, sem separar chamadas de ferramenta de seus resultados. Persistir conversas não traria ganho nos cenários avaliados e criaria um novo cuidado com dados pessoais.
+**CLI e histórico em memória.** O enunciado foca no agente, e a CLI basta para demonstrá-lo e capturar as conversas de exemplo. O histórico é mantido durante a sessão, com os produtos discutidos no prompt para resolver “e no PIX?”. Ele é cortado por turno inteiro, sem separar chamadas de ferramenta de seus resultados. Persistir conversas não traria ganho nos cenários avaliados e criaria um novo cuidado com dados pessoais. Sem autenticação real, um histórico por cliente exporia conversas a quem soubesse o e-mail e o telefone de outra pessoa, então não persisti entre sessões de propósito.
 
 ## Suposições
 

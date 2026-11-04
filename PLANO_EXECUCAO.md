@@ -1,5 +1,7 @@
 # Plano de execução — Agente Empório da Música
 
+> **Nota:** este é o plano original, mantido como registro do processo. A implementação evoluiu: o agente tem sete ferramentas, em vez de cinco, e ganhou uma página local. Para o estado atual e as decisões finais, veja o [README](README.md).
+
 Planejamento em 03/11/2026, baseado no enunciado, no levantamento de requisitos e no parecer sobre o System Design v2.
 
 **Prazo confirmado pelo usuário: 04/11/2026 às 23h59. Fuso adotado: America/Sao_Paulo. Meta interna de entrega: até 22h, com 1h59 de margem.**
