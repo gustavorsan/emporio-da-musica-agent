@@ -71,7 +71,11 @@ def _regret(today: date, channel: Channel | None, purchase: date | None, receive
             ),
         }
     if missing:
-        return _needs(*missing)
+        payload = _needs(*missing)
+        # Only the channel is missing: give the count, so the model has no reason to do it by hand.
+        if received is not None:
+            payload["if_online"] = _window(received, REGRET_DAYS, today)
+        return payload
     window = _window(received, REGRET_DAYS, today)
     return {"result": _result(window), **window}
 
@@ -86,7 +90,7 @@ def _defect(today: date, channel: Channel | None, purchase: date | None, receive
         payload["legal_warranty"] = {
             "days": LEGAL_WARRANTY_DAYS,
             "counted_from": "recebimento",
-            "note": "Sem a data de recebimento não dá para calcular esse prazo.",
+            "note": "Sem a data de recebimento não dá para calcular esse prazo: pergunte-a ao cliente se ele for relevante.",
         }
     else:
         payload["legal_warranty"] = {"days": LEGAL_WARRANTY_DAYS, **_window(received, LEGAL_WARRANTY_DAYS, today)}

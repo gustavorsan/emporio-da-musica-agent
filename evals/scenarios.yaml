@@ -27,7 +27,9 @@
   now: "2026-11-07T15:00:00"
   turns:
     - user: "Oi! Quero falar com um atendente."
-      includes_any: ["segunda"]
+      tools: [search_knowledge]
+      includes: ["segunda"]
+      includes_any: ["whatsapp", "3321-4500"]
 
 - id: takamine-price-and-pix
   turns:
@@ -142,10 +144,11 @@
       includes_any: ["recebeu", "recebimento", "recebido"]
 
 - id: regret-five-days
+  now: "2026-11-10T10:00:00"
   turns:
     - user: "Comprei online, recebi há 5 dias e quero devolver."
       tools: [check_return_window, search_knowledge]
-      includes: ["7", "embalagem"]
+      includes: ["12/11", "embalagem"]
       excludes: ["ja registrei", "reembolso foi", "ja solicitei", "ja abri"]
 
 - id: regret-last-day-is-today
@@ -161,14 +164,19 @@
   turns:
     - user: "Comprei pelo site, recebi em 03/11/2026 e me arrependi. Ainda dá para devolver?"
       tools: [check_return_window]
-      includes_any: ["fora do prazo", "passou", "venceu", "encerrou", "expirou", "terminou", "acabou"]
+      includes_any: ["fora do prazo", "passou", "venceu", "encerrou", "expirou", "terminou", "acabou", "fechou", "nao da mais"]
       excludes: ["ainda da tempo", "dentro do prazo", "ainda esta no prazo"]
 
 - id: regret-asks-for-the-channel
   now: "2026-11-10T10:00:00"
   turns:
     - user: "Recebi ontem e me arrependi, quero devolver. Ainda dá?"
-      includes_any: ["online", "site", "internet", "loja fisica", "onde voce comprou", "canal"]
+      tools: [check_return_window]
+      includes: ["online"]
+      includes_any: ["onde voce comprou", "onde comprou", "loja fisica", "na loja"]
+      excludes: ["provavelmente"]
+      # Any verdict must be tied to the channel ("se foi online..."), which the customer has not given.
+      excludes_regex: ["(?i)^\\W*(sim|(ainda )?(pode|dá),? sim)\\W*$", "(?im)^(?!.*online).*\\bdentro do prazo\\b"]
 
 - id: defect-uses-the-recorded-order-date
   customer_id: 1
@@ -185,14 +193,18 @@
     - user: "Meu pedido 4 veio com defeito de fabricação. Ainda posso trocar?"
       tools: [check_return_window]
       includes_any: ["garantia", "fabricante"]
-      excludes: ["sem cobertura", "nao tem garantia", "nao ha garantia", "perdeu a garantia"]
+      # "Sem cobertura" stays allowed: the right reply says the closed window does not mean that.
+      excludes: ["nao tem cobertura", "nao ha cobertura", "nao tem garantia", "nao ha garantia", "perdeu a garantia"]
 
 - id: preference-start-is-unclear
   now: "2026-11-10T10:00:00"
   turns:
     - user: "Comprei em 01/11/2026, recebi em 08/11/2026 e quero trocar por outra cor. Ainda está no prazo?"
       tools: [check_return_window]
-      includes: ["equipe"]
+      includes: ["08/11", "15/11"]
+      includes_any: ["equipe", "confirmar"]
+      # "Dentro do prazo" stays allowed: it is correct when tied to one of the two possible starts.
+      excludes: ["ferramenta"]
 
 - id: foreign-order-return-reveals-nothing
   customer_id: 6

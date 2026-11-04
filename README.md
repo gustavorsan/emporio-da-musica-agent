@@ -4,7 +4,7 @@ Protótipo em Python de um agente de atendimento por texto para a loja fictícia
 
 **A ideia central:** o modelo interpreta a mensagem e redige a resposta; preços, descontos, parcelas, disponibilidade, prazos de troca e devolução e acesso a pedidos são resolvidos em Python.
 
-> **Estado atual:** a parte determinística está implementada e coberta por testes. A validação com o modelo real e a captura das conversas estão pendentes.
+> **Estado atual:** a parte determinística está coberta por testes, e os cenários de aceite já rodam com o modelo real. A captura das conversas de exemplo está pendente.
 
 ## Como executar
 
@@ -78,7 +78,7 @@ Mensagem ──► agent.py ◄──► OpenAI (chamada de ferramentas)        
 
 **Prazos em Python.** O plano original previa cinco ferramentas, com o modelo comparando as datas. Contar dias é aritmética, e errar nisso nega ou concede um direito ao cliente, então a conta ganhou a mesma regra dos preços. A data de hoje vem da aplicação, no fuso da loja; o modelo só interpreta o que o cliente disse e relata o resultado.
 
-**OpenAI com Chat Completions.** A API oferece chamada de ferramentas com schemas estritos, que reduz argumentos malformados. O histórico explícito combina com a gestão da sessão em memória. O modelo é configurável por `OPENAI_MODEL`, e não há camada multiprovedor, que não se justifica em um protótipo.
+**OpenAI com Chat Completions.** A API oferece chamada de ferramentas com schemas estritos, que reduz argumentos malformados. O histórico explícito combina com a gestão da sessão em memória. O modelo é configurável por `OPENAI_MODEL`, e não há camada multiprovedor, que não se justifica em um protótipo. A validação usou o `gpt-5.4-mini`, que aceita chamada de ferramentas nessa API sem configuração adicional; pela documentação da OpenAI, modelos mais novos como `gpt-6.1-terra` e `gpt-6-luna` exigem a API Responses ou `reasoning_effort=none` para isso.
 
 **SQLite com `sqlite3`.** Não exige servidor, permite joins e tem FTS5. O banco é gerado localmente: a carga valida tudo em um arquivo temporário e só então substitui o anterior, de modo que um erro nunca deixa um banco parcial. Dinheiro fica em centavos inteiros, com `Decimal` nos descontos.
 
@@ -127,7 +127,7 @@ Inconsistências encontradas nos dados, preservadas e não corrigidas:
 ## Verificação
 
 - **Testes determinísticos (`pytest`):** carga, preços, parcelas, prazos de devolução, disponibilidade, titularidade, recuperação das políticas, mecânica do ciclo do agente e API da página local. Os testes do ciclo usam um cliente simulado e não avaliam respostas do modelo.
-- **Cenários de aceite (`evals/`):** 36 cenários com o modelo real, verificando fatos e ferramentas chamadas, sem exigir texto idêntico. Tom e persona são revistos na leitura das conversas.
+- **Cenários de aceite (`evals/`):** 36 cenários com o modelo real, verificando fatos e ferramentas chamadas, sem exigir texto idêntico. Tom e persona são revistos na leitura das conversas. O modelo varia entre execuções: nas três últimas rodadas com `gpt-5.4-mini`, em 04/11/2026, passaram 35, 35 e 34 de 36, com falhas intermitentes em cenários diferentes. Em uma delas, o modelo calculou um prazo de defeito sem chamar a ferramenta, acertando a data, e em outra omitiu o preço original de uma promoção.
 - **Conversas de exemplo (`conversations/`):** transcrições de execuções reais da CLI, com modelo e ferramentas usadas.
 
 Esses testes cobrem os cenários avaliados e não garantem o comportamento para toda entrada possível. Prompt e testes não eliminam alucinação ou prompt injection; por isso, cálculo, autorização e bloqueio de escrita ficam no código.
@@ -135,7 +135,7 @@ Esses testes cobrem os cenários avaliados e não garantem o comportamento para 
 ## Limitações conhecidas
 
 - O agente não executa ações: não registra reclamações, não abre devoluções, não faz reembolsos e não envia mensagens. Ele orienta e indica os canais da loja, ainda que o manual preveja o registro da reclamação.
-- A conta do prazo é determinística, mas depende do que entra nela: a base não registra a entrega real nem o canal da compra, e é o modelo que traduz a fala do cliente em datas e no tipo de caso.
+- A conta do prazo é determinística, mas depende do que entra nela: a base não registra a entrega real nem o canal da compra, e é o modelo que traduz a fala do cliente em datas e no tipo de caso. O uso da ferramenta é instruído no prompt, não imposto pelo código, então o modelo pode ocasionalmente responder sem chamá-la.
 - Os dados são um retrato dos CSVs importados, sem sincronização com estoque ou transportadoras.
 - A busca textual depende dos aliases curados e pode falhar em paráfrases não previstas.
 - A busca por atributos é textual sobre nome, descrição e especificações; não há filtros estruturados por atributo.

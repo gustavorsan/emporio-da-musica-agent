@@ -72,6 +72,18 @@ def test_regret_asks_for_everything_it_lacks(conn):
     assert payload["missing"] == ["purchase_channel", "received_date"]
 
 
+def test_missing_channel_gives_only_a_conditional_count(conn):
+    payload = _check(conn, reason="regret", received_days_ago=1).payload
+    assert (payload["result"], payload["missing"]) == ("needs_information", ["purchase_channel"])
+    assert "deadline" not in payload
+    assert payload["if_online"]["deadline"] == "16/11/2026"
+
+
+def test_missing_receipt_gives_no_conditional_count(conn):
+    payload = _check(conn, reason="regret").payload
+    assert "if_online" not in payload
+
+
 def test_purchase_date_never_stands_in_for_receipt_on_regret(conn):
     payload = _check(conn, reason="regret", purchase_channel="online", purchase_date="2026-11-09").payload
     assert (payload["result"], payload["missing"]) == ("needs_information", ["received_date"])

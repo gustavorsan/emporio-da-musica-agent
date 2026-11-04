@@ -44,6 +44,8 @@ class SearchProducts(_ToolArgs):
     com payment=pix, o desconto de PIX. Exige ao menos texto, categoria ou faixa de preço.
     Em query, use só tipo, marca, modelo ou característica do instrumento. Para "o mais
     barato" ou "mais barato que", use sort=price_asc e max_price, sem colocar isso em query.
+    Em category, use só um nome de categoria que você já tenha visto em um resultado; na
+    dúvida, deixe null e busque por query.
     """
 
     query: str | None = None
@@ -103,7 +105,8 @@ class CheckReturnWindow(_ToolArgs):
 
     Use sempre que o cliente perguntar se ainda está no prazo. reason: regret (arrependimento),
     defect (defeito de fabricação) ou preference (troca por preferência). purchase_channel: online
-    ou store (loja física). Com número de pedido do cliente identificado, passe order_id para usar
+    ou store (loja física), só se o cliente tiver dito; caso contrário, null. Com número de pedido
+    do cliente identificado, passe order_id para usar
     a data de compra registrada. Datas exatas vão em purchase_date e received_date, no formato
     AAAA-MM-DD. Para "ontem" ou "há 5 dias", use purchase_days_ago ou received_days_ago (hoje = 0,
     ontem = 1). Previsão de entrega não é data de recebimento.
