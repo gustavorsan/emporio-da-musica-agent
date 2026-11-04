@@ -12,26 +12,24 @@ from emporio.cli import main as cli_main
 
 BASE_DIR = Path(__file__).resolve().parent
 
-# Demo customer of each session; None runs without identification.
-SESSIONS = {
-    "01_catalogo_e_pagamento": None,
-    "02_promocao_e_regras": None,
-    "03_pedido_e_acesso": 6,
-    "04_devolucao": None,
-    "05_loja_e_escopo": None,
-}
+NAMES = [
+    "01_catalogo_e_pagamento",
+    "02_promocao_e_regras",
+    "03_pedido_e_acesso",
+    "04_devolucao",
+    "05_loja_e_escopo",
+]
 
 
 def main(names: list[str]) -> int:
-    for name in names or SESSIONS:
-        arguments = [
-            "chat",
-            "--script", str(BASE_DIR / "inputs" / f"{name}.txt"),
-            "--transcript", str(BASE_DIR / f"{name}.md"),
-        ]
-        if SESSIONS[name] is not None:
-            arguments += ["--customer-id", str(SESSIONS[name])]
-        status = cli_main(arguments)
+    for name in names or NAMES:
+        status = cli_main(
+            [
+                "chat",
+                "--script", str(BASE_DIR / "inputs" / f"{name}.txt"),
+                "--transcript", str(BASE_DIR / f"{name}.md"),
+            ]
+        )
         if status:
             return status
     return 0
