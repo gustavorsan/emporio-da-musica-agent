@@ -13,6 +13,9 @@ __pycache__/
 build/
 dist/
 
+# The manual is marked for restricted use, so it stays out of the public repository
+data/*.pdf
+
 # Local scratch files and the challenge statement
 tmp/
 desafio_tecnico_ai_eng_artefact.pdf

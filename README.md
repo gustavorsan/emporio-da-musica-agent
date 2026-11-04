@@ -87,7 +87,7 @@ Mensagem ──► agent.py ◄──► OpenAI (chamada de ferramentas)        
 
 **FTS5 em vez de embeddings.** O manual é pequeno e seus termos são previsíveis, e a busca lexical é simples de reproduzir e depurar. Como o FTS5 não tem stemmer em português, a consulta combina termos com OR e prefixo, e cada seção tem aliases curados (“me arrependi”, “quero devolver”) com peso maior. Seções relacionadas são trazidas junto, para que PIX venha com a regra de não cumulatividade. Embeddings ficam como evolução, caso avaliações mostrem falhas com paráfrases.
 
-**Políticas em Markdown com YAML.** O texto do manual fica separado das interpretações, registradas em `assumptions`, com página e versão de origem. O PDF continua sendo a referência. O índice é reconstruído a partir desses arquivos.
+**Políticas em Markdown com YAML.** O texto do manual fica separado das interpretações, registradas em `assumptions`, com página e versão de origem. O PDF, marcado como de uso restrito, é material do desafio e não fica neste repositório: as seções em `knowledge/` preservam o texto, com página e versão de origem, e o campo `source` cita esse arquivo. O índice é reconstruído a partir desses arquivos.
 
 **Prompt.** O prompt de sistema define a persona do §7.1 do manual, quando consultar cada fonte, as regras que o modelo não pode contornar e o que ele não pode alegar ter feito. Data, hora e situação da loja são calculadas em Python e injetadas a cada chamada.
 
