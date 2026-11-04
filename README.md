@@ -79,7 +79,9 @@ Mensagem ──► agent.py ◄──► OpenAI (chamada de ferramentas)        
 
 **Identificação na conversa.** O agente pede e-mail e telefone somente quando precisa consultar um pedido. O código só compara valores que o próprio cliente digitou na conversa e só então define o cliente da sessão, de modo que o modelo não escolhe quem é o cliente nem pode inventar os dados. Pedir os dois não é excesso: um e-mail se repete entre dois clientes na base, e sozinho poderia expor os pedidos de outra pessoa. A falha é idêntica para qualquer dado errado, há três tentativas por conversa, e a identidade não muda depois de confirmada. E-mail e telefone não entram no log nem no registro de ferramentas exibido.
 
-**OpenAI com Chat Completions.** A API oferece chamada de ferramentas com schemas estritos, que reduz argumentos malformados. O histórico explícito combina com a gestão da sessão em memória. O modelo é configurável por `OPENAI_MODEL`, e não há camada multiprovedor, que não se justifica em um protótipo. A validação usou o `gpt-5.4-mini`, que aceita chamada de ferramentas nessa API sem configuração adicional; pela documentação da OpenAI, modelos mais novos como `gpt-6.1-terra` e `gpt-6-luna` exigem a API Responses ou `reasoning_effort=none` para isso.
+**OpenAI com Chat Completions.** A API oferece chamada de ferramentas com schemas estritos, que reduz argumentos malformados. O histórico explícito combina com a gestão da sessão em memória. O modelo é configurável por `OPENAI_MODEL`, e não há camada multiprovedor, que não se justifica em um protótipo. 
+
+**Modelo `gpt-5.4-mini`.** O agente precisa de chamada de ferramentas confiável, não de raciocínio longo, pois cálculos e regras ficam no código. Esse modelo aceita ferramentas no Chat Completions sem configuração adicional, e o custo (US$ 0,75 de entrada e US$ 4,50 de saída por milhão de tokens, em 04/11/2026) permitiu repetir os cenários várias vezes. Pela documentação da OpenAI, o `gpt-6.1-terra` exige a API Responses para ferramentas, e o `gpt-6-luna` exige `reasoning_effort=none`. As falhas observadas foram omissões intermitentes, descritas em Verificação, e não erros de cálculo, que ficam no código.
 
 **SQLite com `sqlite3`.** Não exige servidor, permite joins e tem FTS5. O banco é gerado localmente: a carga valida tudo em um arquivo temporário e só então substitui o anterior, de modo que um erro nunca deixa um banco parcial. Dinheiro fica em centavos inteiros, com `Decimal` nos descontos.
 
@@ -149,6 +151,7 @@ Esses testes cobrem os cenários avaliados e não garantem o comportamento para 
 ## O que eu faria com mais tempo
 
 - Autenticação real, com código enviado ao cliente, em vez de comparar e-mail e telefone.
+- Verificação da resposta em código antes de enviá-la ao cliente: conferir se valores e datas têm origem nas ferramentas e se o plano de parcelas aparece inteiro, com uma nova tentativa em caso de reprovação.
 - Avaliação de retrieval com mais paráfrases e, se os resultados justificarem, busca híbrida com embeddings.
 - Integrações para registrar reclamações e encaminhar a atendentes humanos.
 - API e integração com WhatsApp, o principal canal remoto da loja.
@@ -158,6 +161,6 @@ Esses testes cobrem os cenários avaliados e não garantem o comportamento para 
 ## Uso de assistentes de código
 
 - **Codex:** análise do enunciado e dos dados, levantamento de requisitos, parecer sobre o design e plano de execução, registrados em [LEVANTAMENTO_REQUISITOS.md](LEVANTAMENTO_REQUISITOS.md), [PARECER_ADERENCIA_SYSTEM_DESIGN_V2.md](PARECER_ADERENCIA_SYSTEM_DESIGN_V2.md) e [PLANO_EXECUCAO.md](PLANO_EXECUCAO.md).
-- **Claude Code:** revisão do plano contra os dados, o que revelou lacunas como parcelas históricas abaixo do mínimo e o fuso da loja; implementação do código, das políticas e dos testes; redação deste README.
+- **Claude Code:** revisão do plano contra os dados, o que revelou lacunas como parcelas históricas abaixo do mínimo e o fuso da loja; implementação do código, das políticas, dos testes e dos cenários; redação deste README.
 
-As decisões de provedor, escopo e publicação foram do candidato, e os cálculos críticos foram conferidos contra os CSVs por testes automatizados.
+**Meu papel:** decidi provedor, escopo e publicação, e revisei o resultado. Pedi uma revisão de erros e escolhi o que corrigir; solicitei a interface local, o cálculo de prazos em Python e a identificação na conversa; e corrigi o agente ao notar que ele perguntava em qual loja a compra foi feita, embora só exista uma. Os cálculos críticos foram conferidos contra os CSVs por testes automatizados, e as respostas do modelo, pela leitura das conversas, que encontrou erros que os testes não pegaram.
