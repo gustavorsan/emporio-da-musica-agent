@@ -25,6 +25,7 @@ from emporio.catalog import ToolInputError
 MAX_PRICE_BRL = 1_000_000_000
 # A century is far beyond any purchase, and keeps date subtraction from overflowing.
 MAX_DAYS_AGO = 36_500
+MAX_CONTACT_CHARS = 254
 _ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 _LOOKUP_FAILED = {
@@ -100,6 +101,26 @@ class GetOrderStatus(_ToolArgs):
     order_id: int | None = None
 
 
+class VerifyIdentity(_ToolArgs):
+    """Confirma quem é o cliente, para liberar a consulta dos pedidos dele nesta conversa.
+
+    Use somente com o e-mail e o telefone que o próprio cliente informou nesta conversa, depois
+    de pedir os dois. Nunca invente, complete nem reutilize valores vistos em outro lugar. O
+    resultado nunca traz dados de contato.
+    """
+
+    email: str
+    phone: str
+
+    @field_validator("email", "phone")
+    @classmethod
+    def _bounded(cls, value: str) -> str:
+        # Enforced here because strict schemas do not allow length keywords.
+        if len(value) > MAX_CONTACT_CHARS:
+            raise ValueError(f"deve ter até {MAX_CONTACT_CHARS} caracteres")
+        return value
+
+
 class CheckReturnWindow(_ToolArgs):
     """Calcula, com a data de hoje, se o prazo de troca ou devolução está aberto.
 
@@ -172,6 +193,7 @@ _MODELS: dict[str, type[_ToolArgs]] = {
     "search_products": SearchProducts,
     "get_product_details": GetProductDetails,
     "calculate_offer": CalculateOffer,
+    "verify_identity": VerifyIdentity,
     "get_order_status": GetOrderStatus,
     "check_return_window": CheckReturnWindow,
     "search_knowledge": SearchKnowledge,
@@ -187,6 +209,9 @@ class ToolContext:
     conn: sqlite3.Connection
     customer_id: int | None
     today: date
+    identity_attempts_left: int = 0
+    # Everything the customer typed in this conversation, to tell given details from invented ones.
+    customer_text: str = ""
 
 
 @dataclass
@@ -196,6 +221,8 @@ class ToolOutcome:
     error: str | None = None
     sources: list[str] = field(default_factory=list)
     products: dict[int, str] = field(default_factory=dict)
+    # Set only when verify_identity succeeded; the agent adopts it as the session customer.
+    identified: orders.Customer | None = None
 
 
 def _resolve_date(text: str | None, days_ago: int | None, today: date) -> date | None:
@@ -211,6 +238,10 @@ def _run(name: str, args: _ToolArgs, ctx: ToolContext) -> dict:
         return catalog.get_product_details(ctx.conn, args.product_id)
     if isinstance(args, CalculateOffer):
         return catalog.calculate_offer(ctx.conn, args.product_id, args.payment, args.installments)
+    if isinstance(args, VerifyIdentity):
+        return orders.verify_identity(
+            ctx.conn, ctx.customer_id, ctx.identity_attempts_left, args.email, args.phone, ctx.customer_text
+        )
     if isinstance(args, GetOrderStatus):
         return orders.get_order_status(ctx.conn, ctx.customer_id, args.order_id, ctx.today)
     if isinstance(args, CheckReturnWindow):
@@ -259,6 +290,7 @@ def execute(name: str, raw_arguments: str, ctx: ToolContext) -> ToolOutcome:
     except Exception as exc:  # noqa: BLE001
         # A faulty tool must never end the customer's session; the type goes to the log only.
         return ToolOutcome(dict(_LOOKUP_FAILED), ok=False, error=f"unexpected:{type(exc).__name__}")
+    identified = payload.pop("session_customer", None)
     sources = [item["section"] for item in payload.get("results", [])]
     if "policy_section" in payload:
         sources.append(payload["policy_section"])
@@ -269,4 +301,5 @@ def execute(name: str, raw_arguments: str, ctx: ToolContext) -> ToolOutcome:
         error=error,
         sources=sources,
         products=_discussed_products(payload),
+        identified=identified,
     )

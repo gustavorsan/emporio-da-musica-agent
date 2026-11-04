@@ -98,3 +98,16 @@ def test_schedule_groups_equal_values():
         {"count": 2, "value": "R$ 99,99"},
         {"count": 4, "value": "R$ 99,98"},
     ]
+
+
+@pytest.mark.parametrize(
+    "total, count, expected",
+    [
+        (32310, 4, "2 parcelas de R$ 80,78 + 2 parcelas de R$ 80,77 = 4 parcelas ao todo, sem juros. Total R$ 323,10."),
+        (32310, 3, "3 parcelas de R$ 107,70, sem juros. Total R$ 323,10."),
+        (5000, 1, "1 parcela de R$ 50,00, sem juros. Total R$ 50,00."),
+        (10001, 2, "1 parcela de R$ 50,01 + 1 parcela de R$ 50,00 = 2 parcelas ao todo, sem juros. Total R$ 100,01."),
+    ],
+)
+def test_plan_states_the_quantities_without_ambiguity(total, count, expected):
+    assert pricing.describe_plan(total, count) == expected

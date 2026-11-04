@@ -50,6 +50,24 @@ def check_turn(turn: dict, reply: AgentReply) -> list[str]:
     return failures
 
 
+def _load_contact(conn, customer_id: int | None) -> dict[str, str]:
+    if customer_id is None:
+        return {}
+    row = conn.execute("SELECT email, phone FROM customers WHERE customer_id = ?", (customer_id,)).fetchone()
+    return {"{email}": row["email"], "{phone}": row["phone"]}
+
+
+def _fill(value, contact: dict[str, str]):
+    """Replace the contact placeholders in a turn's message and expectations."""
+    if isinstance(value, str):
+        for placeholder, real in contact.items():
+            value = value.replace(placeholder, real)
+        return value
+    if isinstance(value, list):
+        return [_fill(item, contact) for item in value]
+    return value
+
+
 def main() -> int:
     for stream in (sys.stdout, sys.stderr):
         stream.reconfigure(encoding="utf-8")
@@ -77,9 +95,11 @@ def main() -> int:
             moment = datetime.fromisoformat(scenario["now"]).replace(tzinfo=config.STORE_TIMEZONE)
             agent_options["now"] = lambda moment=moment: moment
         agent = Agent(llm, conn, customer, log_path=config.LOG_PATH, **agent_options)
+        contact = _load_contact(conn, scenario.get("identify_as"))
         failures: list[str] = []
         report.append(f"\n## {scenario['id']}\n")
-        for turn in scenario["turns"]:
+        for raw_turn in scenario["turns"]:
+            turn = {key: _fill(value, contact) for key, value in raw_turn.items()}
             reply = agent.respond(turn["user"])
             turn_failures = check_turn(turn, reply)
             failures += turn_failures

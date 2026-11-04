@@ -118,8 +118,8 @@ def _preference(today: date, channel: Channel | None, purchase: date | None, rec
             "deadline_if_from_purchase": from_purchase["deadline"],
             "deadline_if_from_receipt": from_receipt["deadline"],
             "guidance": (
-                "O manual não define o início destes 7 dias, e isso muda a conclusão. Não afirme que está "
-                "dentro ou fora do prazo: oriente a confirmação com a equipe."
+                "O manual não define o início destes 7 dias, e isso muda a conclusão. Não responda sim nem "
+                "não: mostre as duas datas limite e oriente a confirmação com a equipe."
             ),
         }
     return _needs(*[

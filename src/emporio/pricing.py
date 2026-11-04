@@ -107,3 +107,14 @@ def installment_schedule(total_cents: int, count: int) -> list[dict]:
     for value in split_installments(total_cents, count):
         groups[value] = groups.get(value, 0) + 1
     return [{"count": times, "value": format_brl(value)} for value, times in groups.items()]
+
+
+def describe_plan(total_cents: int, count: int) -> str:
+    """State a plan in one sentence; the real model read a bare list of groups as separate options."""
+    groups = installment_schedule(total_cents, count)
+    parts = " + ".join(
+        f"{group['count']} {'parcela' if group['count'] == 1 else 'parcelas'} de {group['value']}" for group in groups
+    )
+    if len(groups) == 1:
+        return f"{parts}, sem juros. Total {format_brl(total_cents)}."
+    return f"{parts} = {count} parcelas ao todo, sem juros. Total {format_brl(total_cents)}."

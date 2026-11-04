@@ -73,7 +73,7 @@ class _Transcript:
 
     def __init__(self, path: Path | None, model: str, customer: Customer | None) -> None:
         self._path = path
-        session = f"cliente de demonstração nº {customer.customer_id}" if customer else "sem cliente identificado"
+        session = f"cliente de demonstração nº {customer.customer_id}" if customer else "sem cliente identificado no início"
         started = datetime.now(config.STORE_TIMEZONE).strftime("%d/%m/%Y %H:%M")
         title = path.stem if path else ""
         self._parts = [
@@ -205,7 +205,7 @@ def build_parser() -> argparse.ArgumentParser:
     chat.add_argument(
         "--customer-id",
         type=int,
-        help="cliente de demonstração da sessão; identificação ilustrativa, não é autenticação",
+        help="pula a verificação de e-mail e telefone e inicia como este cliente; só para testes",
     )
     chat.add_argument("--script", type=Path, help="arquivo com uma mensagem por linha")
     chat.add_argument("--transcript", type=Path, help="grava a conversa em Markdown")

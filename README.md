@@ -4,8 +4,6 @@ Protótipo em Python de um agente de atendimento por texto para a loja fictícia
 
 **A ideia central:** o modelo interpreta a mensagem e redige a resposta; preços, descontos, parcelas, disponibilidade, prazos de troca e devolução e acesso a pedidos são resolvidos em Python.
 
-> **Estado atual:** a parte determinística está coberta por testes, e os cenários de aceite já rodam com o modelo real. A captura das conversas de exemplo está pendente.
-
 ## Como executar
 
 Requer Python 3.11 ou superior (validado em 3.14.6, no Windows 11) e uma chave da API da OpenAI.
@@ -24,15 +22,15 @@ Em Linux ou macOS, ative o ambiente com `source .venv/bin/activate` e copie o ar
 
 | Comando | O que faz |
 | --- | --- |
-| `python -m emporio web --port 8080` | Usa outra porta para a página local. O cliente de demonstração é escolhido na própria página. |
-| `python -m emporio chat --customer-id 6` | Inicia a sessão como um cliente de demonstração, o que libera a consulta aos pedidos dele. |
+| `python -m emporio web --port 8080` | Usa outra porta para a página local. |
+| `python -m emporio chat --customer-id 6` | Atalho para testes: pula a verificação e inicia como esse cliente. Não existe na página. |
 | `python -m emporio chat --show-tools` | Mostra as ferramentas usadas em cada resposta. |
 | `python -m emporio chat --script arq.txt --transcript saida.md` | Envia as mensagens de um arquivo ao modelo real e grava a conversa. Se o modelo falhar, encerra com erro e não grava a transcrição. |
 | `pytest` | Roda os testes determinísticos, sem rede e sem chave. |
 | `python evals/run.py` | Roda os cenários de aceite com o modelo real (consome créditos da API). |
 | `python conversations/capture.py` | Regenera as conversas de exemplo (consome créditos da API). |
 
-Para testar pedidos: o cliente 6 é dono do pedido 9, o cliente 2 do pedido 8, o cliente 12 do pedido 3 e o cliente 7 dos pedidos 2 e 20.
+Para testar pedidos, pergunte por um pedido e informe na conversa o e-mail e o telefone do cliente, que estão no CSV de clientes em `data/`: o cliente 6 é dono do pedido 9, o cliente 2 do pedido 8, o cliente 12 do pedido 3 e o cliente 7 dos pedidos 2 e 20.
 
 ## Arquitetura
 
@@ -50,10 +48,10 @@ Mensagem ──► agent.py ◄──► OpenAI (chamada de ferramentas)        
 | `db.py` | Conexão de atendimento em modo somente leitura. |
 | `pricing.py` | Promoção, PIX, parcelamento e aritmética em centavos. |
 | `catalog.py` | Busca, detalhes e oferta. |
-| `orders.py` | Pedidos do cliente da sessão. |
+| `orders.py` | Verificação de identidade e pedidos do cliente da sessão. |
 | `knowledge.py` | Parse das políticas, índice e recuperação. |
 | `returns.py` | Prazos de arrependimento, defeito, preferência e garantia legal. |
-| `tools.py` | Contratos das seis ferramentas e tratamento de erros. |
+| `tools.py` | Contratos das sete ferramentas e tratamento de erros. |
 | `llm.py` | Único ponto de contato com o SDK da OpenAI. |
 | `agent.py`, `prompts.py` | Ciclo de ferramentas, sessão e persona. |
 | `cli.py` | Comandos `prepare`, `chat` e `web`. |
@@ -65,18 +63,21 @@ Mensagem ──► agent.py ◄──► OpenAI (chamada de ferramentas)        
 
 **RAG híbrido com recuperação estruturada e textual.** Os dados da operação são relacionais e pedem filtros exatos, então vão para SQL; as políticas são texto e vão para busca textual. Perguntas mistas usam as duas fontes.
 
-**Ferramentas em vez de SQL livre.** O modelo só escolhe entre seis operações com argumentos validados. Isso limita a superfície de consulta e mantém filtros, campos expostos e autorização no código. Nenhuma ferramenta lê e-mail ou telefone, de modo que um prompt injection não tem como obter esses dados.
+**Ferramentas em vez de SQL livre.** O modelo só escolhe entre sete operações com argumentos validados. Isso limita a superfície de consulta e mantém filtros, campos expostos e autorização no código. Nenhuma ferramenta devolve e-mail ou telefone: `verify_identity` só os compara, de modo que um prompt injection não tem como obter esses dados.
 
 | Ferramenta | Função |
 | --- | --- |
 | `search_products` | Busca por texto, categoria e preço. Calcula o preço efetivo antes de filtrar, ordenar e limitar. |
 | `get_product_details` | Descrição, especificações, status e estoque. |
 | `calculate_offer` | Valor final e condições por forma de pagamento. |
+| `verify_identity` | Confirma o cliente pelo e-mail e telefone informados na conversa. |
 | `get_order_status` | Pedido ou lista de pedidos do cliente da sessão. |
 | `check_return_window` | Calcula, com a data de hoje, se o prazo de troca ou devolução está aberto. |
 | `search_knowledge` | Trechos do manual, com seção, página e suposições. |
 
 **Prazos em Python.** O plano original previa cinco ferramentas, com o modelo comparando as datas. Contar dias é aritmética, e errar nisso nega ou concede um direito ao cliente, então a conta ganhou a mesma regra dos preços. A data de hoje vem da aplicação, no fuso da loja; o modelo só interpreta o que o cliente disse e relata o resultado.
+
+**Identificação na conversa.** O agente pede e-mail e telefone somente quando precisa consultar um pedido. O código só compara valores que o próprio cliente digitou na conversa e só então define o cliente da sessão, de modo que o modelo não escolhe quem é o cliente nem pode inventar os dados. Pedir os dois não é excesso: um e-mail se repete entre dois clientes na base, e sozinho poderia expor os pedidos de outra pessoa. A falha é idêntica para qualquer dado errado, há três tentativas por conversa, e a identidade não muda depois de confirmada. E-mail e telefone não entram no log nem no registro de ferramentas exibido.
 
 **OpenAI com Chat Completions.** A API oferece chamada de ferramentas com schemas estritos, que reduz argumentos malformados. O histórico explícito combina com a gestão da sessão em memória. O modelo é configurável por `OPENAI_MODEL`, e não há camada multiprovedor, que não se justifica em um protótipo. A validação usou o `gpt-5.4-mini`, que aceita chamada de ferramentas nessa API sem configuração adicional; pela documentação da OpenAI, modelos mais novos como `gpt-6.1-terra` e `gpt-6-luna` exigem a API Responses ou `reasoning_effort=none` para isso.
 
@@ -114,7 +115,7 @@ O enunciado pede que ambiguidades sejam resolvidas e documentadas.
 | E-mail | Adota o endereço da capa, sem acento no domínio. |
 | Frete de exatamente R$ 500,00 | O manual não define. O agente orienta a confirmação, sem escolher uma regra. |
 | Fuso horário | `America/Campo_Grande`, o fuso da loja. Feriados não constam dos dados e são tratados como informação indisponível. |
-| Sessão | O cliente é definido por `--customer-id` ou pelo seletor da página, fora do alcance do modelo. É uma demonstração de titularidade, não autenticação. |
+| Identificação | E-mail e telefone do cadastro, verificados no código. Dados que aparecem na conversa não provam posse, então isso é uma verificação de protótipo, não autenticação. |
 
 Inconsistências encontradas nos dados, preservadas e não corrigidas:
 
@@ -127,8 +128,8 @@ Inconsistências encontradas nos dados, preservadas e não corrigidas:
 ## Verificação
 
 - **Testes determinísticos (`pytest`):** carga, preços, parcelas, prazos de devolução, disponibilidade, titularidade, recuperação das políticas, mecânica do ciclo do agente e API da página local. Os testes do ciclo usam um cliente simulado e não avaliam respostas do modelo.
-- **Cenários de aceite (`evals/`):** 36 cenários com o modelo real, verificando fatos e ferramentas chamadas, sem exigir texto idêntico. Tom e persona são revistos na leitura das conversas. O modelo varia entre execuções: nas três últimas rodadas com `gpt-5.4-mini`, em 04/11/2026, passaram 35, 35 e 34 de 36, com falhas intermitentes em cenários diferentes. Em uma delas, o modelo calculou um prazo de defeito sem chamar a ferramenta, acertando a data, e em outra omitiu o preço original de uma promoção.
-- **Conversas de exemplo (`conversations/`):** transcrições de execuções reais da CLI, com modelo e ferramentas usadas.
+- **Cenários de aceite (`evals/`):** 44 cenários com o modelo real, verificando fatos e ferramentas chamadas, sem exigir texto idêntico. Tom e persona são revistos na leitura das conversas. O modelo varia entre execuções: nas três últimas rodadas com `gpt-5.4-mini`, em 04/11/2026, passaram 43, 43 e 40 de 44. As falhas foram intermitentes: o modelo às vezes pula uma consulta, omite os valores das parcelas ou abre com “dá sim” antes de ressalvar que um produto já testado depende da avaliação da equipe. Os checks foram mantidos rígidos, em vez de afrouxados para zerar essas falhas.
+- **Conversas de exemplo (`conversations/`):** cinco transcrições de execuções reais da CLI, com modelo e ferramentas usadas. Revê-las encontrou erros que os checks não pegaram, como parcelas mal interpretadas, corrigidos antes desta captura. O e-mail e o telefone na conversa 03 são do cliente fictício do CSV.
 
 Esses testes cobrem os cenários avaliados e não garantem o comportamento para toda entrada possível. Prompt e testes não eliminam alucinação ou prompt injection; por isso, cálculo, autorização e bloqueio de escrita ficam no código.
 
@@ -142,11 +143,12 @@ Esses testes cobrem os cenários avaliados e não garantem o comportamento para 
 - Não há cotação de frete, pois ela depende de CEP, peso e dimensões, que não foram fornecidos.
 - Não há calendário de feriados nem de horários especiais.
 - O histórico se perde ao encerrar a sessão, ao recarregar a página ou ao iniciar uma nova conversa.
+- Quem souber o e-mail e o telefone de um cliente consegue consultar os pedidos dele, pois não há código enviado ao cliente nem senha. Esses dados, digitados na conversa, também são enviados ao provedor do modelo e aparecem na transcrição da CLI se ela for gravada.
 - A página é só para uso local: não tem login nem HTTPS, e não deve ser exposta na rede. Ela não grava transcrições, papel que fica com a CLI.
 
 ## O que eu faria com mais tempo
 
-- Autenticação real, em vez da sessão de demonstração.
+- Autenticação real, com código enviado ao cliente, em vez de comparar e-mail e telefone.
 - Avaliação de retrieval com mais paráfrases e, se os resultados justificarem, busca híbrida com embeddings.
 - Integrações para registrar reclamações e encaminhar a atendentes humanos.
 - API e integração com WhatsApp, o principal canal remoto da loja.

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from emporio import catalog
@@ -184,16 +186,16 @@ def test_credit_eligibility_in_an_offer(conn):
 
     allowed = catalog.calculate_offer(conn, 81, "credit", 6)  # R$ 599,90
     assert allowed["credit"]["eligible"] is True
-    assert allowed["credit"]["schedule"] == [
-        {"count": 2, "value": "R$ 99,99"},
-        {"count": 4, "value": "R$ 99,98"},
-    ]
+    assert allowed["credit"]["plan"] == (
+        "2 parcelas de R$ 99,99 + 4 parcelas de R$ 99,98 = 6 parcelas ao todo, sem juros. Total R$ 599,90."
+    )
+    assert "schedule" not in json.dumps(allowed)
 
 
 def test_credit_is_computed_on_the_promotional_price(conn):
     offer = catalog.calculate_offer(conn, 127, "credit", 3)
     assert offer["price"] == "R$ 323,10"
-    assert offer["credit"]["schedule"] == [{"count": 3, "value": "R$ 107,70"}]
+    assert offer["credit"]["plan"] == "3 parcelas de R$ 107,70, sem juros. Total R$ 323,10."
 
 
 def test_credit_without_installments_returns_the_best_plan(conn):

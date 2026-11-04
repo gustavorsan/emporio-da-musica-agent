@@ -18,10 +18,9 @@ from emporio import config
 from emporio.agent import Agent, AgentReply
 from emporio.db import connect_readonly
 from emporio.llm import LLMClient
-from emporio.orders import Customer, find_customer
+from emporio.orders import Customer
 
 HOST = "127.0.0.1"
-_MAX_CUSTOMER_ID = 2**31 - 1
 
 _STATIC_DIR = Path(__file__).parent / "static"
 # An explicit map instead of a directory lookup, so a request path never reaches the filesystem.
@@ -80,20 +79,12 @@ class ChatService:
     def model(self) -> str:
         return self._llm.model
 
-    def create_session(self, customer_id: int | None) -> tuple[str, Customer | None]:
+    def create_session(self) -> str:
+        """Start anonymously: a customer is only set once the conversation confirms one."""
         # Requests run on different threads; the per-session lock keeps access to one at a time.
         conn = connect_readonly(self._db_path, check_same_thread=False)
         try:
-            customer = None
-            if customer_id is not None:
-                customer = find_customer(conn, customer_id)
-                if customer is None:
-                    raise ApiError(
-                        HTTPStatus.NOT_FOUND,
-                        "customer_not_found",
-                        f"Cliente de demonstração não encontrado: {customer_id}.",
-                    )
-            agent = Agent(self._llm, conn, customer, log_path=self._log_path)
+            agent = Agent(self._llm, conn, log_path=self._log_path)
             session = _Session(agent, conn, threading.Lock())
             session_id = secrets.token_urlsafe(16)
             with self._registry_lock:
@@ -102,7 +93,7 @@ class ChatService:
         except Exception:
             conn.close()
             raise
-        return session_id, customer
+        return session_id
 
     def _make_room(self) -> None:
         """Drop the least recently used idle conversations; the caller holds the registry lock."""
@@ -120,7 +111,7 @@ class ChatService:
                     "Há muitas conversas em andamento. Tente de novo em instantes.",
                 )
 
-    def send(self, session_id: str, text: str) -> AgentReply:
+    def send(self, session_id: str, text: str) -> tuple[AgentReply, Customer | None]:
         # Taking the session lock under the registry lock stops eviction from closing its connection.
         with self._registry_lock:
             session = self._sessions.get(session_id)
@@ -138,7 +129,7 @@ class ChatService:
                 )
             self._sessions.move_to_end(session_id)
         try:
-            return session.agent.respond(text)
+            return session.agent.respond(text), session.agent.customer
         finally:
             session.lock.release()
 
@@ -153,16 +144,6 @@ class ChatService:
 
 def _invalid(code: str, message: str) -> ApiError:
     return ApiError(HTTPStatus.BAD_REQUEST, code, message)
-
-
-def _parse_customer_id(payload: dict) -> int | None:
-    value = payload.get("customer_id")
-    if value is None:
-        return None
-    # bool is a subclass of int, so `true` would otherwise select customer 1.
-    if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= _MAX_CUSTOMER_ID:
-        raise _invalid("invalid_customer", "Cliente de demonstração inválido.")
-    return value
 
 
 def _parse_message(payload: dict) -> tuple[str, str]:
@@ -180,12 +161,6 @@ def _parse_message(payload: dict) -> tuple[str, str]:
     return session_id, text
 
 
-def _describe_customer(customer: Customer | None) -> dict | None:
-    if customer is None:
-        return None
-    return {"customer_id": customer.customer_id, "first_name": customer.first_name}
-
-
 class _Server(ThreadingHTTPServer):
     # On Windows, address reuse would let a second server share the port and split the requests.
     allow_reuse_address = sys.platform != "win32"
@@ -199,6 +174,7 @@ class _Handler(BaseHTTPRequestHandler):
     server: _Server
     # Applies to socket reads and writes only, not to the wait for the model.
     timeout = 30
+    _body_read = False
 
     def log_message(self, format: str, *args: object) -> None:
         # The default handler writes every request to stderr, burying the operator warnings.
@@ -241,6 +217,19 @@ class _Handler(BaseHTTPRequestHandler):
                 HTTPStatus.UNSUPPORTED_MEDIA_TYPE, "unsupported_type", "Envie os dados em JSON."
             )
 
+    def _discard_unread_body(self) -> None:
+        """Read what a refused request sent: closing with unread data resets the socket on Windows,
+        which can destroy the response before the client reads it."""
+        if self._body_read:
+            return
+        try:
+            length = int(self.headers.get("Content-Length", ""))
+        except ValueError:
+            return
+        # An oversized body is left alone: reading it is what the size limit exists to avoid.
+        if 0 < length <= config.WEB_MAX_BODY_BYTES:
+            self.rfile.read(length)
+
     def _read_json(self) -> dict:
         try:
             length = int(self.headers.get("Content-Length", ""))
@@ -252,6 +241,7 @@ class _Handler(BaseHTTPRequestHandler):
             raise ApiError(
                 HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "body_too_large", "A mensagem é grande demais."
             )
+        self._body_read = True
         try:
             payload = json.loads(self.rfile.read(length))
         # RecursionError covers bodies made of thousands of nested brackets.
@@ -278,12 +268,14 @@ class _Handler(BaseHTTPRequestHandler):
             self._check_origin()
             route = urlsplit(self.path).path
             if route == "/api/session":
-                self._create_session(self._read_json())
+                self._read_json()
+                self._create_session()
             elif route == "/api/message":
                 self._send_message(self._read_json())
             else:
                 raise ApiError(HTTPStatus.NOT_FOUND, "not_found", "Rota não encontrada.")
         except ApiError as error:
+            self._discard_unread_body()
             self._send_error(error)
         except TimeoutError:
             # Handled by the base class, which closes the connection of a stalled client.
@@ -299,21 +291,13 @@ class _Handler(BaseHTTPRequestHandler):
                 )
             )
 
-    def _create_session(self, payload: dict) -> None:
+    def _create_session(self) -> None:
         service = self.server.service
-        session_id, customer = service.create_session(_parse_customer_id(payload))
-        self._send_json(
-            HTTPStatus.CREATED,
-            {
-                "session_id": session_id,
-                "customer": _describe_customer(customer),
-                "model": service.model,
-            },
-        )
+        self._send_json(HTTPStatus.CREATED, {"session_id": service.create_session(), "model": service.model})
 
     def _send_message(self, payload: dict) -> None:
         session_id, text = _parse_message(payload)
-        reply = self.server.service.send(session_id, text)
+        reply, customer = self.server.service.send(session_id, text)
         if reply.failure:
             print(f"Aviso: resposta de contingência, não do modelo ({reply.failure}).", file=sys.stderr)
         self._send_json(
@@ -322,6 +306,7 @@ class _Handler(BaseHTTPRequestHandler):
                 "text": reply.text,
                 "failure": reply.failure,
                 "tools": [asdict(trace) for trace in reply.tool_traces],
+                "customer_first_name": customer.first_name if customer else None,
             },
         )
 

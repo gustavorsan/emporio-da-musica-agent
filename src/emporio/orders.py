@@ -32,9 +32,42 @@ NOT_ACCESSIBLE = {
 IDENTIFICATION_REQUIRED = {
     "error": "identification_required",
     "guidance": (
-        "Esta sessão não tem cliente identificado, então nenhum pedido pode ser consultado. "
-        "Número de pedido, nome, e-mail ou telefone informados na conversa não servem como "
-        "identificação: indique os canais da loja."
+        "Esta sessão não tem cliente identificado. Peça o e-mail e o telefone do cadastro e use "
+        "verify_identity. Nome, número de pedido ou afirmações não servem como identificação."
+    ),
+}
+
+ALREADY_IDENTIFIED = {
+    "error": "already_identified",
+    "guidance": (
+        "Esta sessão já tem um cliente identificado, e isso não muda durante a conversa. "
+        "Para consultar outro cadastro, é preciso iniciar uma nova conversa."
+    ),
+}
+
+IDENTIFICATION_LOCKED = {
+    "error": "identification_locked",
+    "guidance": (
+        "O limite de tentativas desta conversa acabou. Não peça os dados de novo: diga que a "
+        "consulta pode ser feita com a equipe pelo WhatsApp (67) 3321-4500."
+    ),
+}
+
+# Not an attempt: nothing was compared, because the customer never typed these values.
+CONTACT_NOT_PROVIDED = {
+    "error": "contact_not_provided",
+    "guidance": (
+        "O cliente ainda não informou esse e-mail e esse telefone nesta conversa. Nunca invente "
+        "nem complete esses dados: peça os dois ao cliente."
+    ),
+}
+
+# Identical for a wrong e-mail, a wrong phone and an unknown customer, so nothing can be probed.
+IDENTITY_NOT_CONFIRMED = {
+    "error": "identity_not_confirmed",
+    "guidance": (
+        "Os dados não foram confirmados. Não diga qual deles falhou nem se algum existe no "
+        "cadastro. Peça para conferir o e-mail e o telefone, ou indique os canais da loja."
     ),
 }
 
@@ -51,6 +84,56 @@ def find_customer(conn: sqlite3.Connection, customer_id: int) -> Customer | None
         "SELECT customer_id, name FROM customers WHERE customer_id = ?", (customer_id,)
     ).fetchone()
     return Customer(row["customer_id"], row["name"].split()[0]) if row else None
+
+
+def _phone_digits(phone: str) -> str:
+    digits = re.sub(r"\D", "", phone)
+    # Customers may include the country code; the records only hold area code and number.
+    return digits[2:] if len(digits) == 13 and digits.startswith("55") else digits
+
+
+def match_customer(conn: sqlite3.Connection, email: str, phone: str) -> Customer | None:
+    """Find a customer only when both fields match; one e-mail is shared by two customers."""
+    rows = conn.execute(
+        "SELECT customer_id, name, phone FROM customers WHERE lower(email) = ?",
+        (email.strip().casefold(),),
+    ).fetchall()
+    digits = _phone_digits(phone)
+    for row in rows:
+        if digits and _phone_digits(row["phone"]) == digits:
+            return Customer(row["customer_id"], row["name"].split()[0])
+    return None
+
+
+def _typed_by_customer(email: str, phone: str, customer_text: str) -> bool:
+    """Check the values came from the customer, so the model cannot guess or reuse them."""
+    typed_email = email.strip().casefold()
+    typed_phone = _phone_digits(phone)
+    return bool(typed_email and typed_phone) and (
+        typed_email in customer_text.casefold() and typed_phone in re.sub(r"\D", "", customer_text)
+    )
+
+
+def verify_identity(
+    conn: sqlite3.Connection,
+    session_customer_id: int | None,
+    attempts_left: int,
+    email: str,
+    phone: str,
+    customer_text: str,
+) -> dict:
+    """Confirm a customer for the session; the reply never carries contact data."""
+    if session_customer_id is not None:
+        return dict(ALREADY_IDENTIFIED)
+    if attempts_left <= 0:
+        return dict(IDENTIFICATION_LOCKED)
+    if not _typed_by_customer(email, phone, customer_text):
+        return dict(CONTACT_NOT_PROVIDED)
+    customer = match_customer(conn, email, phone)
+    if customer is None:
+        return {**IDENTITY_NOT_CONFIRMED, "attempts_left": attempts_left - 1}
+    # session_customer is removed by the tool layer before the model sees this payload.
+    return {"verified": True, "first_name": customer.first_name, "session_customer": customer}
 
 
 def _payment_label(method: str) -> str:

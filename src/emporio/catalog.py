@@ -329,7 +329,7 @@ def _credit_terms(total_cents: int, installments: int | None) -> dict:
     terms: dict = {
         "interest": "sem juros",
         "max_eligible_installments": best,
-        "max_eligible_schedule": pricing.installment_schedule(total_cents, best),
+        "max_eligible_plan": pricing.describe_plan(total_cents, best),
     }
     if installments is not None:
         eligible = pricing.is_installment_eligible(total_cents, installments)
@@ -339,7 +339,7 @@ def _credit_terms(total_cents: int, installments: int | None) -> dict:
             pricing.minimum_installment_cents(installments)
         )
         if eligible:
-            terms["schedule"] = pricing.installment_schedule(total_cents, installments)
+            terms["plan"] = pricing.describe_plan(total_cents, installments)
         else:
             terms["smallest_installment_if_split"] = pricing.format_brl(
                 min(pricing.split_installments(total_cents, installments))

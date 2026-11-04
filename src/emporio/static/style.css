@@ -85,14 +85,6 @@ body {
   gap: 8px 12px;
 }
 
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  color: var(--text-muted);
-  font-size: 0.8rem;
-}
-
 .toggle {
   display: flex;
   align-items: center;
@@ -102,20 +94,10 @@ body {
   cursor: pointer;
 }
 
-select,
 textarea,
 button {
   font: inherit;
   color: inherit;
-}
-
-select {
-  min-height: 38px;
-  padding: 4px 8px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  font-size: 0.9rem;
 }
 
 button {
@@ -146,7 +128,6 @@ button.secondary:hover:not(:disabled) {
 }
 
 button:disabled,
-select:disabled,
 textarea:disabled {
   opacity: 0.55;
   cursor: not-allowed;
@@ -318,10 +299,6 @@ textarea {
 @media (max-width: 640px) {
   .controls {
     width: 100%;
-  }
-
-  .field {
-    flex: 1 1 100%;
   }
 
   .bubble,

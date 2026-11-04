@@ -27,6 +27,8 @@ MAX_HISTORY_TURNS = 12
 MAX_COMPLETION_TOKENS = 4_000
 LLM_TIMEOUT_SECONDS = 60.0
 LLM_MAX_RETRIES = 2
+# Per conversation, so the chat cannot be used to try contact details until one fits.
+MAX_IDENTITY_ATTEMPTS = 3
 
 WEB_DEFAULT_PORT = 8000
 WEB_MAX_SESSIONS = 20

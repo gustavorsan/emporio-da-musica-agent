@@ -4,7 +4,6 @@ const log = document.getElementById("log");
 const composer = document.getElementById("composer");
 const input = document.getElementById("message");
 const sendButton = document.getElementById("send");
-const customerSelect = document.getElementById("customer");
 const newChatButton = document.getElementById("new-chat");
 const showToolsToggle = document.getElementById("show-tools");
 const statusLine = document.getElementById("status");
@@ -13,6 +12,7 @@ const welcomeTemplate = document.getElementById("welcome-template");
 const SERVER_UNREACHABLE = "Não consegui falar com o servidor local. Confira se ele continua em execução.";
 
 let sessionId = null;
+let sessionModel = "";
 let busy = false;
 
 async function post(path, body) {
@@ -52,7 +52,6 @@ function refreshControls() {
   const canSend = !busy && sessionId !== null;
   input.disabled = !canSend;
   sendButton.disabled = !canSend;
-  customerSelect.disabled = busy;
   newChatButton.disabled = busy;
   log.querySelectorAll(".suggestion").forEach((button) => {
     button.disabled = !canSend;
@@ -129,6 +128,11 @@ function addToolDetails(tools) {
   log.append(details);
 }
 
+function showStatus(firstName) {
+  const who = firstName ? `sessão de ${firstName}` : "sem cliente identificado";
+  statusLine.textContent = `Assistente virtual · protótipo · ${who} · modelo ${sessionModel}`;
+}
+
 function resizeInput() {
   input.style.height = "auto";
   input.style.height = `${input.scrollHeight}px`;
@@ -147,11 +151,10 @@ async function startSession() {
   refreshControls();
   log.replaceChildren();
   try {
-    const value = customerSelect.value;
-    const session = await post("/api/session", { customer_id: value ? Number(value) : null });
+    const session = await post("/api/session", {});
     sessionId = session.session_id;
-    const who = session.customer ? `sessão de ${session.customer.first_name}` : "sem cliente identificado";
-    statusLine.textContent = `Assistente virtual · protótipo · ${who} · modelo ${session.model}`;
+    sessionModel = session.model;
+    showStatus(null);
     showWelcome();
   } catch (error) {
     addNotice(error.message);
@@ -175,6 +178,7 @@ async function send(rawText) {
   try {
     const reply = await post("/api/message", { session_id: sessionId, text });
     typing.remove();
+    showStatus(reply.customer_first_name);
     const bubble = addBubble("agent", reply.text);
     addToolDetails(reply.tools);
     if (reply.failure) {
@@ -215,7 +219,6 @@ input.addEventListener("keydown", (event) => {
 });
 
 input.addEventListener("input", resizeInput);
-customerSelect.addEventListener("change", startSession);
 newChatButton.addEventListener("click", startSession);
 showToolsToggle.addEventListener("change", () => {
   document.body.classList.toggle("show-tools", showToolsToggle.checked);

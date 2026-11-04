@@ -23,6 +23,7 @@ INCOMPLETE_REPLY = (
     "Desculpa, não consegui concluir essa consulta. Pode reformular a pergunta? "
     "Se preferir, fale com a equipe pelo WhatsApp (67) 3321-4500."
 )
+_REDACTED_ARGUMENTS = '{"email": "***", "phone": "***"}'
 
 
 @dataclass(frozen=True)
@@ -115,6 +116,11 @@ class Agent:
         # Whole turns are kept so a trim can never split tool calls from their results.
         self._turns: list[list[dict]] = []
         self._discussed_products: dict[int, str] = {}
+        self._identity_attempts_left = config.MAX_IDENTITY_ATTEMPTS
+
+    @property
+    def customer(self) -> Customer | None:
+        return self._customer
 
     def _messages(self, current_turn: list[dict]) -> list[dict]:
         system = build_system_prompt(self._now(), self._customer, self._discussed_products)
@@ -130,15 +136,28 @@ class Agent:
             conn=self._conn,
             customer_id=self._customer.customer_id if self._customer else None,
             today=self._now().date(),
+            identity_attempts_left=self._identity_attempts_left,
+            customer_text="\n".join(
+                message["content"]
+                for past_turn in (*self._turns, turn)
+                for message in past_turn
+                if message["role"] == "user"
+            ),
         )
         started = time.perf_counter()
         outcome = tools.execute(call.name, call.arguments, context)
         _log_tool_call(self._log_path, call.name, call.arguments, outcome, time.perf_counter() - started)
+        if outcome.identified is not None:
+            self._customer = outcome.identified
+        elif outcome.error == "identity_not_confirmed":
+            self._identity_attempts_left -= 1
         # Re-inserting moves a repeated product to the end, keeping the list ordered by recency.
         for product_id, name in outcome.products.items():
             self._discussed_products.pop(product_id, None)
             self._discussed_products[product_id] = name
-        traces.append(ToolTrace(call.name, call.arguments, outcome.ok, outcome.error, outcome.sources))
+        # Traces reach transcripts and the page's tool panel, which must not repeat contact details.
+        shown_arguments = _REDACTED_ARGUMENTS if call.name == "verify_identity" else call.arguments
+        traces.append(ToolTrace(call.name, shown_arguments, outcome.ok, outcome.error, outcome.sources))
         turn.append({"role": "tool", "tool_call_id": call.id, "content": _serialize(outcome.payload)})
 
     def respond(self, user_text: str) -> AgentReply:

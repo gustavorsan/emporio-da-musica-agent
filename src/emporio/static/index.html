@@ -16,16 +16,6 @@
         <p id="status">Assistente virtual · protótipo</p>
       </div>
       <div class="controls">
-        <label class="field">
-          <span>Cliente de demonstração</span>
-          <select id="customer">
-            <option value="">Sem identificação</option>
-            <option value="6">Cliente 6 · pedido 9</option>
-            <option value="2">Cliente 2 · pedido 8</option>
-            <option value="12">Cliente 12 · pedido 3</option>
-            <option value="7">Cliente 7 · pedidos 2 e 20</option>
-          </select>
-        </label>
         <label class="toggle">
           <input type="checkbox" id="show-tools">
           <span>Mostrar ferramentas</span>
@@ -41,7 +31,7 @@
       <textarea id="message" rows="1" maxlength="2000" placeholder="Escreva sua mensagem" autocomplete="off"></textarea>
       <button type="submit" id="send">Enviar</button>
     </form>
-    <p class="footnote">O cliente de demonstração ilustra a consulta de pedidos e não é uma autenticação. A conversa se perde ao fechar a sessão.</p>
+    <p class="footnote">Para consultar pedidos, o assistente pede o e-mail e o telefone do cadastro. É uma verificação de protótipo, não uma autenticação completa. A conversa se perde ao fechar a sessão.</p>
   </div>
 
   <template id="welcome-template">

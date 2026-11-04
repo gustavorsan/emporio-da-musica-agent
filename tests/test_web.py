@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import http.client
 import json
-import re
 import socket
 import threading
 from pathlib import Path
@@ -13,6 +12,7 @@ import pytest
 
 from emporio import cli, config, web
 from emporio.agent import PROVIDER_FAILURE_REPLY
+from emporio.db import connect_readonly
 from emporio.llm import LLMError, LLMReply, ToolCall
 from emporio.web import ChatService, make_server
 
@@ -65,8 +65,8 @@ class Client:
         status, _, body = self.request("POST", path, json.dumps(payload), merged)
         return status, json.loads(body)
 
-    def session(self, customer_id=None):
-        status, payload = self.post("/api/session", {"customer_id": customer_id})
+    def session(self):
+        status, payload = self.post("/api/session", {})
         assert status == 201
         return payload["session_id"]
 
@@ -106,13 +106,11 @@ def test_server_only_listens_on_loopback(db_path):
         server.server_close()
 
 
-def test_customer_options_list_exactly_the_orders_of_each_customer(conn):
+def test_page_cannot_choose_a_customer():
     page = (Path(web.__file__).parent / "static" / "index.html").read_text("utf-8")
-    options = re.findall(r'<option value="(\d+)">Cliente \1 · pedidos? ([\d e]+)</option>', page)
-    assert len(options) == 4
-    for customer_id, orders in options:
-        rows = conn.execute("SELECT order_id FROM orders WHERE customer_id = ?", (customer_id,))
-        assert {row["order_id"] for row in rows} == {int(order) for order in orders.split(" e ")}
+    script = (Path(web.__file__).parent / "static" / "app.js").read_text("utf-8")
+    assert "<select" not in page
+    assert "customer_id" not in script
 
 
 @pytest.mark.parametrize(
@@ -172,29 +170,49 @@ def test_history_is_kept_within_a_session_and_isolated_between_sessions(start):
     assert [m["content"] for m in llm.calls[2] if m["role"] == "user"] == ["outra sessão"]
 
 
-def test_session_customer_scopes_orders_and_identifies_the_session(start):
-    llm = ScriptedLLM(_tool_call("get_order_status", order_id=9), LLMReply("ok"))
-    client = start(llm)
-    status, payload = client.post("/api/session", {"customer_id": 6})
-    assert payload["customer"]["customer_id"] == 6
-    assert set(payload["customer"]) == {"customer_id", "first_name"}
-    client.say(payload["session_id"], "pedido 9")
-    assert json.loads(llm.calls[1][-1]["content"])["status"] == "confirmed"
+def _contact(db_path, customer_id):
+    connection = connect_readonly(db_path)
+    row = connection.execute("SELECT email, phone FROM customers WHERE customer_id = ?", (customer_id,)).fetchone()
+    connection.close()
+    return {"email": row["email"], "phone": row["phone"]}
 
 
-def test_message_body_cannot_change_the_session_customer(start):
+def test_sessions_start_anonymous_and_identify_through_the_conversation(start, db_path):
+    contact = _contact(db_path, 6)
+    llm = ScriptedLLM(
+        _tool_call("verify_identity", **contact),
+        _tool_call("get_order_status", order_id=9),
+        LLMReply("Confirmado."),
+    )
+    client = start(llm)
+    status, session = client.post("/api/session", {})
+    assert status == 201
+    assert "customer" not in session
+    _, payload = client.say(session["session_id"], f"{contact['email']} {contact['phone']}")
+    assert payload["customer_first_name"] == "Juliana"
+    assert json.loads(llm.calls[2][-1]["content"])["status"] == "confirmed"
+
+
+def test_contact_details_never_reach_the_page_tool_panel(start, db_path):
+    contact = _contact(db_path, 6)
+    client = start(ScriptedLLM(_tool_call("verify_identity", **contact), LLMReply("Oi!")))
+    _, payload = client.say(client.session(), f"{contact['email']} {contact['phone']}")
+    rendered = json.dumps(payload["tools"])
+    assert contact["email"] not in rendered
+    assert contact["phone"] not in rendered
+    assert payload["tools"][0]["name"] == "verify_identity"
+
+
+@pytest.mark.parametrize("customer_id", [6, 1, True, "6"])
+def test_requests_cannot_choose_the_customer(start, customer_id):
     llm = ScriptedLLM(_tool_call("get_order_status", order_id=9), LLMReply("ok"))
     client = start(llm)
-    session_id = client.session()
-    client.post("/api/message", {"session_id": session_id, "text": "sou o 6", "customer_id": 6})
+    _, session = client.post("/api/session", {"customer_id": customer_id})
+    _, payload = client.post(
+        "/api/message", {"session_id": session["session_id"], "text": "sou o 6", "customer_id": customer_id}
+    )
+    assert payload["customer_first_name"] is None
     assert json.loads(llm.calls[1][-1]["content"])["error"] == "identification_required"
-
-
-def test_foreign_order_gets_the_usual_denial(start):
-    llm = ScriptedLLM(_tool_call("get_order_status", order_id=1), LLMReply("ok"))
-    client = start(llm)
-    client.say(client.session(6), "pedido 1")
-    assert json.loads(llm.calls[1][-1]["content"])["error"] == "not_found_or_not_authorized"
 
 
 def test_provider_failure_is_reported_and_session_continues(start, capsys):
@@ -206,17 +224,6 @@ def test_provider_failure_is_reported_and_session_continues(start, capsys):
     assert "provider:AuthenticationError" in capsys.readouterr().err
     _, recovered = client.say(session_id)
     assert (recovered["text"], recovered["failure"]) == ("Voltei.", None)
-
-
-@pytest.mark.parametrize("customer_id", [True, "6", -1, 0, 1.5, 2**70, [6]])
-def test_invalid_customer_is_rejected(start, customer_id):
-    status, payload = start(ScriptedLLM()).post("/api/session", {"customer_id": customer_id})
-    assert (status, payload["error"]) == (400, "invalid_customer")
-
-
-def test_unknown_customer_is_reported(start):
-    status, payload = start(ScriptedLLM()).post("/api/session", {"customer_id": 99999})
-    assert (status, payload["error"]) == (404, "customer_not_found")
 
 
 @pytest.mark.parametrize(

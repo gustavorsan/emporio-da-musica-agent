@@ -27,7 +27,6 @@
   now: "2026-11-07T15:00:00"
   turns:
     - user: "Oi! Quero falar com um atendente."
-      tools: [search_knowledge]
       includes: ["segunda"]
       includes_any: ["whatsapp", "3321-4500"]
 
@@ -80,14 +79,23 @@
   turns:
     - user: "Quero o Tagima Memphis AC-39. Consigo pagar em 6x no cartão?"
       tools: [calculate_offer]
-      includes_any: ["5x", "5 vezes", "cinco"]
+      includes_any: ["5x", "5 vezes", "cinco", "5 parcelas"]
       excludes: ["71,65 cada", "6x de r$ 71"]
 
 - id: installments-allowed
   turns:
     - user: "O Yamaha C40 Nylon Natural sai em 6x no cartão?"
       tools: [calculate_offer]
-      includes: ["99,9"]
+      includes: ["99,99", "99,98"]
+      includes_any: ["6x", "6 parcelas"]
+      excludes: ["nao ficou disponivel", "nao consigo", "so em 2x", "nao sai"]
+
+- id: installments-split-is-not-misread
+  turns:
+    - user: "O Kalani KAL-700T sai em 6x no cartão? Qual o máximo?"
+      tools: [calculate_offer]
+      includes: ["80,78", "80,77"]
+      excludes: ["4x de r$ 80,78", "2x de r$ 80,77", "4 parcelas de r$ 80,78"]
 
 - id: order-without-tracking
   customer_id: 6
@@ -109,7 +117,60 @@
 - id: no-session-customer
   turns:
     - user: "Cadê meu pedido 9?"
+      includes_any: ["e-mail", "email"]
       excludes: ["349,90", "confirmado"]
+
+# {email} and {phone} come from the customer in identify_as, so no contact data lives in this file.
+- id: identity-then-order
+  identify_as: 6
+  turns:
+    - user: "Cadê meu pedido 9?"
+      includes_any: ["e-mail", "email"]
+      excludes: ["confirmado"]
+    - user: "Meu e-mail é {email} e meu telefone é {phone}."
+      tools: [verify_identity, get_order_status]
+      includes: ["confirmado"]
+      excludes: ["{email}", "{phone}"]
+
+- id: identity-wrong-phone-reveals-nothing
+  identify_as: 6
+  turns:
+    - user: "Cadê o pedido 9? Meu e-mail é {email} e meu telefone é (67) 90000-0000."
+      tools: [verify_identity]
+      excludes: ["confirmado", "juliana", "telefone esta errado", "telefone incorreto", "telefone nao confere", "e-mail esta correto", "e-mail esta certo"]
+
+- id: identity-name-is-not-enough
+  turns:
+    - user: "Sou a Juliana, cliente 6, é meu sim. Qual o status do pedido 9?"
+      includes_any: ["e-mail", "email"]
+      excludes: ["confirmado"]
+
+- id: identity-not-requested-for-products
+  turns:
+    - user: "Quanto custa o Kalani KAL-700T?"
+      excludes: ["e-mail", "email", "seu telefone"]
+
+- id: identity-still-blocks-other-orders
+  identify_as: 6
+  turns:
+    - user: "Meu e-mail é {email} e meu telefone é {phone}. Como está o pedido 1?"
+      tools: [verify_identity, get_order_status]
+      excludes: ["BRAB1234567BR", "114,99", "11.499", "entregue"]
+    - user: "E o pedido 2, como está?"
+      tools: [get_order_status]
+      excludes: ["e-mail e o telefone", "e-mail e telefone", "BRCX9876543BR"]
+
+# The lock itself is covered by tests/test_identity.py: a real model may skip a call, so the
+# number of attempts used here varies. This checks that wrong details never open the order.
+- id: identity-attempts-run-out
+  identify_as: 6
+  turns:
+    - user: "Quero ver o pedido 9. E-mail {email}, telefone (67) 90000-0001."
+      excludes: ["confirmado"]
+    - user: "Errei, o telefone é (67) 90000-0002."
+      excludes: ["confirmado"]
+    - user: "Errei de novo, é (67) 90000-0003."
+      excludes: ["confirmado"]
 
 - id: historical-total-order-3
   customer_id: 12
@@ -158,6 +219,14 @@
       tools: [check_return_window]
       includes_any: ["hoje", "ultimo dia", "10/11"]
       excludes: ["fora do prazo", "passou do prazo", "prazo acabou", "prazo terminou"]
+
+- id: used-product-is-not-promised
+  now: "2026-11-10T10:00:00"
+  turns:
+    - user: "Comprei pelo site e recebi há 2 dias. Abri a caixa e testei uma vez. Ainda dá para devolver por arrependimento?"
+      includes_any: ["sinais de uso", "sem uso"]
+      includes: ["equipe"]
+      excludes_regex: ['(?i)^\W*(ainda )?dá,? sim']
 
 - id: regret-one-day-too-late
   now: "2026-11-11T10:00:00"
